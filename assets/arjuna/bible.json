@@ -1,0 +1,30 @@
+{
+    "name": "Arjuna",
+
+    "approx_age": "around 30",
+
+    "appearance": {
+        "skin_tone": "medium brown Indian complexion",
+        "face_shape": "sharp heroic warrior face",
+        "eyes": "focused intelligent eyes",
+        "hair": "long black warrior hair",
+        "facial_hair": "light beard"
+    },
+
+    "costume": {
+        "clothing": "royal Kshatriya warrior clothing",
+        "armor": "ancient Indian warrior armor",
+        "jewelry": "royal ornaments"
+    },
+
+    "signature_weapon": [
+        "Gandiva bow",
+        "arrows"
+    ],
+
+    "identity_rules": [
+        "same face in every scene",
+        "same warrior appearance",
+        "same armor style"
+    ]
+}

@@ -1,0 +1,15 @@
+Chapter: {chapter}
+
+Verse: {verse}
+
+Sanskrit:
+
+{sanskrit}
+
+English Translation:
+
+{translation}
+
+Life Lesson:
+
+{life_lesson}

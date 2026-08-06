@@ -1,0 +1,34 @@
+{
+    "name": "Krishna",
+
+    "approx_age": "young adult",
+
+    "appearance": {
+        "skin_tone": "divine blue complexion",
+        "face_shape": "calm oval face",
+        "eyes": "large compassionate deep eyes",
+        "hair": "long black wavy hair",
+        "facial_hair": "clean shaven",
+        "tilak": "golden Vaishnav tilak"
+    },
+
+    "costume": {
+        "clothing": "yellow silk dhoti and royal garments",
+        "armor": "none",
+        "jewelry": "gold royal ornaments",
+        "crown": "peacock feather crown"
+    },
+
+    "signature_weapon": [
+        "Sudarshan Chakra",
+        "Panchajanya conch"
+    ],
+
+    "identity_rules": [
+        "same face in every scene",
+        "same hairstyle",
+        "same costume",
+        "same age",
+        "same divine appearance"
+    ]
+}
