@@ -15,8 +15,6 @@ import subprocess
 from config import FFMPEG_PATH
 from modules.logger import Logger
 
-FFMPEG_PATH = r"C:\\ffmpeg\\bin\\ffmpeg.exe"
-
 
 class VideoRenderer:
 
