@@ -48,96 +48,24 @@ class Verse:
 
 
 # ============================================================
-# Scene
+# Teaching Script
+# ============================================================
+
+# ============================================================
+# Teaching Script
 # ============================================================
 
 @dataclass(slots=True)
-class Scene:
-
-    id: Optional[int] = None
+class TeachingScript:
 
     verse_id: int = 0
 
-    scene_number: int = 0
+    hook: str = ""
 
-    duration: float = 5.0
+    meaning: str = ""
 
-    camera: str = ""
+    lesson: str = ""
 
-    focus: str = ""
+    reflection: str = ""
 
-    action: str = ""
-
-    mood: str = ""
-
-    created_at: Optional[str] = None
-
-
-# ============================================================
-# Image Prompt
-# ============================================================
-
-@dataclass(slots=True)
-class ImagePrompt:
-
-    id: Optional[int] = None
-
-    scene_id: int = 0
-
-    prompt: str = ""
-
-    style: str = "Cinematic"
-
-    negative_prompt: str = ""
-
-    seed: Optional[int] = None
-
-    created_at: Optional[str] = None
-
-
-# ============================================================
-# Generated Image
-# ============================================================
-
-@dataclass(slots=True)
-class GeneratedImage:
-
-    id: Optional[int] = None
-
-    prompt_id: int = 0
-
-    image_path: str = ""
-
-    width: int = 1080
-
-    height: int = 1920
-
-    model: str = ""
-
-    generation_time: float = 0.0
-
-    created_at: Optional[str] = None
-
-
-# ============================================================
-# Assets
-# ============================================================
-
-@dataclass(slots=True)
-class Asset:
-
-    id: Optional[int] = None
-
-    verse_id: int = 0
-
-    audio_path: Optional[str] = None
-
-    subtitle_path: Optional[str] = None
-
-    video_path: Optional[str] = None
-
-    thumbnail_path: Optional[str] = None
-
-    completed: bool = False
-
-    created_at: Optional[str] = None
+    full_script: str = ""

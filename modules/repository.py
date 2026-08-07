@@ -13,14 +13,42 @@ from typing import Optional
 from modules.database import db
 from modules.models import (
     Verse,
-    Scene,
-    ImagePrompt,
-    GeneratedImage,
-    Asset,
+    TeachingScript,
 )
 
 
 class Repository:
+
+# --------------------------------------------------
+# Get Specific Verse
+# --------------------------------------------------
+
+    def get_verse(
+        self,
+        chapter: int,
+        verse: int,
+    ):
+
+        cursor = db.execute(
+            """
+            SELECT *
+            FROM verses
+            WHERE chapter = ?
+            AND verse = ?
+            LIMIT 1
+            """,
+            (
+                chapter,
+                verse,
+            ),
+        )
+
+        row = cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return self._row_to_verse(row)
 
     # =====================================================
     # VERSES

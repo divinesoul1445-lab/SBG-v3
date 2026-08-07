@@ -23,9 +23,8 @@ import time
 
 from modules.logger import Logger
 from modules.repository import Repository
-from modules.narration import NarrationGenerator
+from modules.teaching_script import TeachingScriptGenerator
 from modules.scene_generator import SceneGenerator
-from modules.narration_splitter import NarrationSplitter
 
 from modules.tts import TTSGenerator
 from modules.subtitles import SubtitleGenerator
@@ -37,9 +36,8 @@ class Pipeline:
 
     def __init__(self):
         self.repository = Repository()
-        self.narration = NarrationGenerator()
+        self.teaching_script_generator = TeachingScriptGenerator()
         self.scene_generator = SceneGenerator()
-        self.narration_splitter = NarrationSplitter()
         self.tts = TTSGenerator()
         self.subtitles = SubtitleGenerator()
         self.video = VideoRenderer()
@@ -66,17 +64,23 @@ class Pipeline:
     # Load Verse
     # --------------------------------------------------
 
+    # def _get_verse(self):
+
+    #     verse = self.repository.get_next_pending_verse()
+
+    #     if verse is None:
+
+    #         raise Exception(
+    #             "No pending verse found."
+    #         )
+
+    #     return verse
     def _get_verse(self):
 
-        verse = self.repository.get_next_pending_verse()
-
-        if verse is None:
-
-            raise Exception(
-                "No pending verse found."
-            )
-
-        return verse
+        return self.repository.get_verse(
+            chapter=1,
+            verse=1,
+        )
 
 
     # --------------------------------------------------
@@ -123,38 +127,33 @@ class Pipeline:
             verse,
         )
 
-        narration = self._run_step(
-            "Generating narration...",
-            self.narration.generate,
-            verse,
+        script = self._run_step(
+            "Generating teaching script...",
+            self.teaching_script_generator.generate,
+            verse
         )
 
-        split_narration  = self._run_step(
-            "Splitting narration...",
-            self.narration_splitter.split,
-            narration
-        )
 
         scenes  = self._run_step(
-            "Generating scenes...",
+            "Preparing visual sequence...",
             self.scene_generator.generate,
             verse,
-            narration
-                    )
+            script,
+            )
 
         image_files = [scene["image"] for scene in scenes]
 
         audio_file = self._run_step(
             "Generating narration audio...",
             self.tts.generate,
-            narration,
+            script.full_script,
             output_folder,
         )
 
         subtitle_file = self._run_step(
             "Generating subtitles...",
             self.subtitles.generate,
-            narration,
+            script.full_script,
             output_folder,
         )
 

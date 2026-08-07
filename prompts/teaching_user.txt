@@ -1,0 +1,92 @@
+Do NOT think step-by-step.
+Return the final answer immediately.
+
+Reasoning must remain internal.
+Do not output your thinking.
+Output only the required XML.
+
+You are creating the narration for a YouTube Shorts video about the Bhagavad Gita.
+
+Your task is to generate ONE complete teaching script for the verse provided below.
+
+STRICT REQUIREMENTS
+
+* Follow every instruction in the system prompt.
+* Return ONLY the required output.
+* Do NOT greet the viewer.
+* Do NOT introduce yourself.
+* Do NOT ask questions.
+* Do NOT explain your reasoning.
+* Do NOT use markdown.
+* Do NOT add headings other than the required XML tags.
+* Do NOT output anything before `<HOOK>`.
+* Do NOT output anything after `</REFLECTION>`.
+
+OUTPUT FORMAT
+
+<HOOK>
+...
+</HOOK>
+
+<MEANING>
+...
+</MEANING>
+
+<LESSON>
+...
+</LESSON>
+
+<REFLECTION>
+...
+</REFLECTION>
+
+WORD LIMITS
+
+HOOK
+
+* Maximum 8 words
+
+MEANING
+
+* Maximum 12 words
+
+LESSON
+
+* Maximum 10 words
+
+REFLECTION
+
+* Maximum 8 words
+
+TOTAL
+
+* Maximum 35 words
+
+CONTENT RULES
+
+* Stay completely faithful to the provided verse.
+* Never invent events or emotions.
+* Never change the meaning.
+* Speak in calm, compassionate English.
+* Write exactly as narration for a human voice.
+* The entire narration must naturally fit within 10–12 seconds.
+
+VERSE
+
+Chapter:
+{chapter}
+
+Verse:
+{verse}
+
+Sanskrit:
+{sanskrit}
+
+Transliteration:
+{transliteration}
+
+English Translation:
+{translation}
+
+Life Lesson:
+{life_lesson}

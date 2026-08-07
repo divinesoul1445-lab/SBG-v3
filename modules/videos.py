@@ -12,7 +12,8 @@ Creates the final Shorts video from:
 from pathlib import Path
 import subprocess
 
-from config import FFMPEG_PATH
+
+from config import FFMPEG_PATH, FFPROBE_PATH
 from modules.logger import Logger
 
 
@@ -21,11 +22,8 @@ class VideoRenderer:
     def __init__(self):
 
         self.ffmpeg = FFMPEG_PATH
+        self.ffprobe = FFPROBE_PATH
 
-        self.ffprobe = FFMPEG_PATH.replace(
-            "ffmpeg.exe",
-            "ffprobe.exe",
-        )
 
     # --------------------------------------------------
     # Audio Duration
@@ -52,18 +50,24 @@ class VideoRenderer:
             str(audio_file),
 
         ]
+        print("\n" + "=" * 80)
+        print("FFMPEG COMMAND")
+        print("=" * 80)
+
+        for item in command:
+            print(item)
+
+        print("=" * 80 + "\n")
+
+        print("FFmpeg executable :", self.ffmpeg)
 
         result = subprocess.run(
-
             command,
-
             capture_output=True,
-
             text=True,
-
             check=True,
-
         )
+
 
         return float(
             result.stdout.strip()

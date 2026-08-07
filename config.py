@@ -17,21 +17,12 @@ DEBUG = False
 
 LIPSYNC_MODE = "test"
 
-FAST_MODE = True
-
-GENERATE_CHARACTER_BIBLE = False
-GENERATE_SUBTITLES = True
-GENERATE_YOUTUBE = True
-GENERATE_LIPSYNC = False
-
-FFMPEG_PATH = r"C:\\ffmpeg\\bin\\ffmpeg.exe"
-
 
 # =====================================================
 # PROJECT
 # =====================================================
 
-PROJECT_NAME = "SBG AI v2"
+PROJECT_NAME = "SBG AI v3"
 
 ROOT_DIR = Path(__file__).resolve().parent
 
@@ -97,7 +88,8 @@ OLLAMA_URL = os.getenv(
 #     "qwen3:8b"
 # )
 
-OLLAMA_MODEL = "llama3.2:3b"
+#OLLAMA_MODEL = "llama3.2:3b"
+OLLAMA_MODEL = "qwen3:8b"
 
 # =====================================================
 # FAL AI
@@ -200,4 +192,12 @@ FFMPEG_PATH = str(
     / "ffmpeg"
     / "bin"
     / "ffmpeg.exe"
+)
+
+FFPROBE_PATH = str(
+    BASE_DIR
+    / "tools"
+    / "ffmpeg"
+    / "bin"
+    / "ffprobe.exe"
 )

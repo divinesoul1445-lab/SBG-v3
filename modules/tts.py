@@ -24,7 +24,6 @@ VOLUME = "+0%"
 class TTSGenerator:
 
     def __init__(self):
-
         pass
 
     async def _generate(
@@ -43,29 +42,29 @@ class TTSGenerator:
         await communicate.save(str(output_file))
 
     def generate(
-        self,
-        narration: str,
-        output_folder: Path,
-    ) -> Path:
+    self,
+    text: str,
+    output_folder: Path,
+) -> Path:
 
         output_folder.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        audio_file = output_folder / "narration.mp3"
+        audio_file = output_folder / "teaching.mp3"
 
         if audio_file.exists():
             return audio_file
 
-        if not narration:
+        if not text.strip():
             raise Exception(
-                "Narration is empty."
+                "Input text is empty."
             )
 
         asyncio.run(
             self._generate(
-                narration,
+                text,
                 audio_file,
             )
         )
