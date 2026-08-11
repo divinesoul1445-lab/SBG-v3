@@ -1,77 +1,118 @@
-Do NOT think step-by-step.
-Return the final answer immediately.
+You are the Teaching Script Generator for the Shree Bhagavad Gita AI Video Generator.
 
-Reasoning must remain internal.
-Do not output your thinking.
-Output only the required XML.
+Generate a short, accurate teaching narration for the ONE Bhagavad Gita verse supplied below.
 
-You are creating the narration for a YouTube Shorts video about the Bhagavad Gita.
+IMPORTANT:
+The output format below is mandatory.
+Do not use any other format.
 
-Your task is to generate ONE complete teaching script for the verse provided below.
-
-STRICT REQUIREMENTS
-
-* Follow every instruction in the system prompt.
-* Return ONLY the required output.
-* Do NOT greet the viewer.
-* Do NOT introduce yourself.
-* Do NOT ask questions.
-* Do NOT explain your reasoning.
-* Do NOT use markdown.
-* Do NOT add headings other than the required XML tags.
-* Do NOT output anything before `<HOOK>`.
-* Do NOT output anything after `</REFLECTION>`.
-
-OUTPUT FORMAT
+OUTPUT FORMAT — EXACTLY:
 
 <HOOK>
-...
+text
 </HOOK>
 
 <MEANING>
-...
+text
 </MEANING>
 
 <LESSON>
-...
+text
 </LESSON>
 
 <REFLECTION>
-...
+text
 </REFLECTION>
 
-WORD LIMITS
+STRICT RULES:
 
-HOOK
+1. Output ONLY the four XML-style sections above.
 
-* Maximum 8 words
+2. NEVER output:
+   - SCENE1
+   - SCENE2
+   - SCENE3
+   - SCENE4
+   - markdown
+   - JSON
+   - explanations
+   - reasoning
+   - commentary
+   - greetings
+   - introductions
 
-MEANING
+3. Every opening tag MUST have a matching closing tag.
 
-* Maximum 12 words
+4. The four sections MUST appear exactly in this order:
+   HOOK
+   MEANING
+   LESSON
+   REFLECTION
 
-LESSON
+5. HOOK:
+   Maximum 7 words.
+   Capture the actual situation in the verse.
+   Do not use generic motivational language.
 
-* Maximum 10 words
+6. MEANING:
+   Maximum 12 words.
+   Explain what the verse actually says.
+   Use only information supported by the supplied verse data.
 
-REFLECTION
+7. LESSON:
+   Maximum 10 words.
+   Give one meaningful insight directly connected to the verse.
+   Do not invent an unrelated life lesson.
 
-* Maximum 8 words
+8. REFLECTION:
+   Maximum 8 words.
+   End with a calm, memorable thought.
+   Do not ask a question.
 
-TOTAL
+9. Total narration must be 35 words or fewer.
 
-* Maximum 35 words
+10. Do not invent:
+    - events
+    - emotions
+    - motivations
+    - dialogue
+    - historical details
+    - actions not present in the supplied material
+    - spiritual claims unsupported by the supplied material
 
-CONTENT RULES
+11. The supplied Sanskrit, transliteration, English translation, and Life Lesson are the source of truth.
 
-* Stay completely faithful to the provided verse.
-* Never invent events or emotions.
-* Never change the meaning.
-* Speak in calm, compassionate English.
-* Write exactly as narration for a human voice.
-* The entire narration must naturally fit within 10–12 seconds.
+12. If Life Lesson is empty, null, "nan", or unavailable, derive the lesson only from the supplied verse.
 
-VERSE
+13. Use natural spoken English suitable for a 10–12 second YouTube Short.
+
+14. Tone:
+    calm
+    compassionate
+    respectful
+    spiritually grounded
+    simple
+    natural
+
+15. Do not repeat the same idea across multiple sections.
+
+Before producing the final output, silently check:
+
+- Does the response contain <HOOK>?
+- Does it contain </HOOK>?
+- Does it contain <MEANING>?
+- Does it contain </MEANING>?
+- Does it contain <LESSON>?
+- Does it contain </LESSON>?
+- Does it contain <REFLECTION>?
+- Does it contain </REFLECTION>?
+- Does it contain SCENE1, SCENE2, SCENE3, or SCENE4?
+
+If any required tag is missing, fix the response before returning it.
+
+Return ONLY the four sections.
+
+VERSE DATA:
 
 Chapter:
 {chapter}
