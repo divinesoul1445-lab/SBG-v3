@@ -155,7 +155,7 @@ class TTSGenerator:
 
         audio_file = (
             output_folder
-            / f"scene{scene_number}.mp3"
+            / "narration.mp3"
         )
 
         # ----------------------------------------------------

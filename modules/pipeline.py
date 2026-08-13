@@ -1,29 +1,69 @@
 """
 SBG V3 Pipeline
 
-Current development mode:
+CURRENT DEVELOPMENT MODE:
 
 Chapter 1, Verse 1 ONLY
+
+Architecture:
 
 Excel
     ↓
 Approved Scene 1–4 Narrations
     ↓
-TTS - one audio file per scene
+Scene TTS
     ↓
-Subtitles
+Scene Subtitles
     ↓
 Fixed Asset Images
     ↓
-Video Renderer
+Individual Scene Videos
     ↓
-final_video.mp4
+Merge Scene Videos
+    ↓
+Background Music
+    ↓
+Final Video
+
+Output:
+
+output/
+└── chapter_001/
+    └── verse_001/
+        ├── scene1/
+        │   ├── narration.mp3
+        │   ├── subtitles.srt
+        │   └── scene_video.mp4
+        │
+        ├── scene2/
+        │   ├── narration.mp3
+        │   ├── subtitles.srt
+        │   └── scene_video.mp4
+        │
+        ├── scene3/
+        │   ├── narration.mp3
+        │   ├── subtitles.srt
+        │   └── scene_video.mp4
+        │
+        ├── scene4/
+        │   ├── narration.mp3
+        │   ├── subtitles.srt
+        │   └── scene_video.mp4
+        │
+        └── final/
+            ├── scenes.txt
+            ├── merged_video.mp4
+            └── final_video.mp4
+
+Images are NEVER generated.
+The four fixed images from assets/images are used.
 """
+
 
 from pathlib import Path
 import json
 
-from config import OUTPUT_DIR, SCENE_IMAGES
+from config import SCENE_IMAGES
 
 from modules.logger import Logger
 from modules.sheet import ExcelContentManager
@@ -43,15 +83,7 @@ class Pipeline:
         self.excel = ExcelContentManager()
 
         # ------------------------------------------------------
-        # Output
-        # ------------------------------------------------------
-
-        self.output_dir = Path(
-            OUTPUT_DIR
-        )
-
-        # ------------------------------------------------------
-        # Audio
+        # TTS
         # ------------------------------------------------------
 
         self.tts = TTSGenerator()
@@ -68,6 +100,14 @@ class Pipeline:
 
         self.video = VideoRenderer()
 
+        # ------------------------------------------------------
+        # Project output
+        # ------------------------------------------------------
+
+        self.output_dir = Path(
+            "output"
+        )
+
     # ==========================================================
     # STEP RUNNER
     # ==========================================================
@@ -79,11 +119,17 @@ class Pipeline:
         *args,
     ):
 
-        Logger.info(message)
+        Logger.info(
+            message
+        )
 
-        result = func(*args)
+        result = func(
+            *args
+        )
 
-        Logger.success(message)
+        Logger.success(
+            message
+        )
 
         return result
 
@@ -93,9 +139,9 @@ class Pipeline:
 
     def _verse_output_folder(
         self,
-        chapter: int,
-        verse: int,
-    ) -> Path:
+        chapter,
+        verse,
+    ):
 
         folder = (
             self.output_dir
@@ -108,13 +154,62 @@ class Pipeline:
             exist_ok=True,
         )
 
+        Logger.success(
+            f"Output folder : {folder.resolve()}"
+        )
+
         return folder
 
     # ==========================================================
-    # LOAD CHAPTER 1 VERSE 1 ONLY
+    # SCENE OUTPUT FOLDER
     # ==========================================================
 
-    def _get_verse(self):
+    def _scene_output_folder(
+        self,
+        verse_folder,
+        scene_number,
+    ):
+
+        folder = (
+            Path(verse_folder)
+            / f"scene{scene_number}"
+        )
+
+        folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        return folder
+
+    # ==========================================================
+    # FINAL OUTPUT FOLDER
+    # ==========================================================
+
+    def _final_output_folder(
+        self,
+        verse_folder,
+    ):
+
+        folder = (
+            Path(verse_folder)
+            / "final"
+        )
+
+        folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        return folder
+
+    # ==========================================================
+    # LOAD CHAPTER 1 VERSE 1
+    # ==========================================================
+
+    def _get_verse(
+        self,
+    ):
 
         """
         IMPORTANT:
@@ -132,11 +227,15 @@ class Pipeline:
             try:
 
                 chapter = int(
-                    row.get("Chapter")
+                    row.get(
+                        "Chapter"
+                    )
                 )
 
                 verse = int(
-                    row.get("Verse")
+                    row.get(
+                        "Verse"
+                    )
                 )
 
             except (
@@ -146,27 +245,16 @@ class Pipeline:
 
                 continue
 
-            if chapter == 1 and verse == 1:
+            if (
+                chapter == 1
+                and verse == 1
+            ):
 
                 return row
 
         raise Exception(
             "Chapter 1, Verse 1 was not found "
             "in the Excel content master."
-        )
-
-    # ==========================================================
-    # PREPARE OUTPUT
-    # ==========================================================
-
-    def _prepare_output(
-        self,
-        verse,
-    ):
-
-        return self._verse_output_folder(
-            1,
-            1,
         )
 
     # ==========================================================
@@ -198,7 +286,7 @@ class Pipeline:
         ]
 
         # ------------------------------------------------------
-        # Validate all four scenes
+        # Validate
         # ------------------------------------------------------
 
         for index, narration in enumerate(
@@ -208,7 +296,9 @@ class Pipeline:
 
             if (
                 narration is None
-                or not str(narration).strip()
+                or not str(
+                    narration
+                ).strip()
             ):
 
                 raise Exception(
@@ -217,51 +307,45 @@ class Pipeline:
                 )
 
         return [
-            str(narration).strip()
+            str(
+                narration
+            ).strip()
             for narration in scenes
         ]
-
-    # ==========================================================
-    # COMBINE NARRATION
-    # ==========================================================
-
-    def _combine_narration(
-        self,
-        scenes,
-    ):
-
-        return " ".join(
-            scene.strip()
-            for scene in scenes
-        )
 
     # ==========================================================
     # GET FIXED SCENE IMAGES
     # ==========================================================
 
-    def _get_scene_images(self):
+    def _get_scene_images(
+        self,
+    ):
 
         """
         DO NOT generate images.
 
-        Use the four existing images from:
-
-            assets/images/
+        Use the four existing fixed images
+        from assets/images.
         """
 
         images = []
 
-        for scene_number in range(1, 5):
+        for scene_number in range(
+            1,
+            5,
+        ):
 
             if scene_number not in SCENE_IMAGES:
 
                 raise Exception(
-                    f"SCENE_IMAGES does not contain "
-                    f"Scene {scene_number}."
+                    f"Scene {scene_number} image mapping "
+                    f"is missing from SCENE_IMAGES."
                 )
 
             image = Path(
-                SCENE_IMAGES[scene_number]
+                SCENE_IMAGES[
+                    scene_number
+                ]
             )
 
             if not image.exists():
@@ -276,6 +360,54 @@ class Pipeline:
             )
 
         return images
+
+    # ==========================================================
+    # SAVE SCENE CONTENT
+    # ==========================================================
+
+    def _save_scene_json(
+        self,
+        scene_folder,
+        scene_number,
+        narration,
+        image_file,
+        audio_file,
+        subtitle_file,
+        video_file,
+    ):
+
+        data = {
+
+            "chapter": 1,
+
+            "verse": 1,
+
+            "scene": scene_number,
+
+            "narration": narration,
+
+            "image_file": str(
+                image_file
+            ),
+
+            "audio_file": str(
+                audio_file
+            ),
+
+            "subtitle_file": str(
+                subtitle_file
+            ),
+
+            "video_file": str(
+                video_file
+            ),
+        }
+
+        self._save_json(
+            Path(scene_folder)
+            / "scene.json",
+            data,
+        )
 
     # ==========================================================
     # SAVE JSON
@@ -301,10 +433,87 @@ class Pipeline:
             )
 
     # ==========================================================
+    # SAVE PIPELINE SUMMARY
+    # ==========================================================
+
+    def _save_pipeline_summary(
+        self,
+        verse_folder,
+        scenes,
+        image_files,
+        audio_files,
+        subtitle_files,
+        scene_videos,
+        final_video,
+    ):
+
+        data = {
+
+            "chapter": 1,
+
+            "verse": 1,
+
+            "scenes": [],
+
+            "final_video": str(
+                final_video
+            ),
+        }
+
+        for index in range(
+            4
+        ):
+
+            data[
+                "scenes"
+            ].append({
+
+                "scene": index + 1,
+
+                "narration": scenes[
+                    index
+                ],
+
+                "image": str(
+                    image_files[
+                        index
+                    ]
+                ),
+
+                "audio": str(
+                    audio_files[
+                        index
+                    ]
+                ),
+
+                "subtitle": str(
+                    subtitle_files[
+                        index
+                    ]
+                ),
+
+                "video": str(
+                    scene_videos[
+                        index
+                    ]
+                ),
+            })
+
+        self._save_json(
+            Path(
+                verse_folder
+            )
+            / "pipeline_output.json",
+            data,
+        )
+
+    # ==========================================================
     # MAIN PIPELINE
     # ==========================================================
 
-    def run(self):
+    def run(
+        self,
+    ):
 
         Logger.section(
             "Shree Bhagavad Gita AI Video Generator (V3)"
@@ -320,17 +529,14 @@ class Pipeline:
         )
 
         # ======================================================
-        # 2. PREPARE OUTPUT
+        # 2. PREPARE VERSE OUTPUT
         # ======================================================
 
-        output_folder = self._run_step(
+        verse_folder = self._run_step(
             "Preparing output folder...",
-            self._prepare_output,
-            verse,
-        )
-
-        Logger.success(
-            f"Output folder : {output_folder}"
+            self._verse_output_folder,
+            1,
+            1,
         )
 
         # ======================================================
@@ -344,18 +550,7 @@ class Pipeline:
         )
 
         # ======================================================
-        # 4. COMBINE NARRATION
-        #
-        # Kept temporarily because the current subtitle
-        # generator may still expect one text string.
-        # ======================================================
-
-        narration = self._combine_narration(
-            scenes
-        )
-
-        # ======================================================
-        # 5. LOAD FIXED ASSET IMAGES
+        # 4. LOAD FIXED IMAGES
         # ======================================================
 
         image_files = self._run_step(
@@ -364,7 +559,7 @@ class Pipeline:
         )
 
         # ------------------------------------------------------
-        # Display mapping
+        # Display image mapping
         # ------------------------------------------------------
 
         for index, image in enumerate(
@@ -377,75 +572,30 @@ class Pipeline:
             )
 
         # ======================================================
-        # 6. SAVE SCENE CONTENT
+        # 5. GENERATE SCENE AUDIO
         # ======================================================
 
-        self._save_json(
-            output_folder
-            / "scene_narrations.json",
-            {
-                "chapter": 1,
-                "verse": 1,
+        audio_files = []
 
-                "hook": (
-                    verse.get("Hook")
-                    or ""
-                ),
-
-                "life_lesson": (
-                    verse.get("Life Lesson")
-                    or ""
-                ),
-
-                "scene_1": scenes[0],
-                "scene_2": scenes[1],
-                "scene_3": scenes[2],
-                "scene_4": scenes[3],
-
-                "full_narration": narration,
-
-                "images": [
-                    str(image)
-                    for image in image_files
-                ],
-            },
-        )
-
-
-        # print("\n===== SCENES DEBUG =====")
-
-        # for index, scene in enumerate(
-        #     scenes,
-        #     start=1,
-        # ):
-        #     print(
-        #         f"Scene {index}: "
-        #         f"type={type(scene)}"
-        #     )
-        #     print(
-        #         f"Value={scene!r}"
-        #     )
-
-        # print("========================\n")
-        # ======================================================
-        # 7. GENERATE ONE TTS FILE PER SCENE
-        # ======================================================
-
-        audio_files = self._run_step(
-            "Generating narration per scene audio...",
-            self.tts.generate_scenes,
+        for index, narration in enumerate(
             scenes,
-            output_folder,
-        )
-
-        # ------------------------------------------------------
-        # Verify all audio files
-        # ------------------------------------------------------
-
-        for index, audio_file in enumerate(
-            audio_files,
             start=1,
         ):
+
+            scene_folder = (
+                self._scene_output_folder(
+                    verse_folder,
+                    index,
+                )
+            )
+
+            audio_file = self._run_step(
+                f"Generating Scene {index} narration...",
+                self.tts.generate_scene,
+                index,
+                narration,
+                scene_folder,
+            )
 
             audio_file = Path(
                 audio_file
@@ -458,7 +608,7 @@ class Pipeline:
                     f"{audio_file}"
                 )
 
-            if audio_file.stat().st_size == 0:
+            if audio_file.stat().st_size <= 0:
 
                 raise Exception(
                     f"Scene {index} audio is 0 KB:\n"
@@ -469,127 +619,204 @@ class Pipeline:
                 f"Scene {index} audio : {audio_file}"
             )
 
-        # ======================================================
-        # 8. GENERATE SUBTITLES
-        # ======================================================
-
-        scene_texts = scenes
-
-        subtitle_file = self._run_step(
-            "Generating subtitles...",
-            self.subtitles.generate,
-            scene_texts,
-            audio_files,
-            output_folder,
-        )
-
-
-        scene_data = self.video.get_scene_durations(
-            audio_files,
-            padding=0.3,
-        )
-
-        print()
-        print(
-            f"{'Scene':<8}"
-            f"{'Narration':>12}"
-            f"{'Image duration':>18}"
-        )
-
-        print("-" * 38)
-
-        for scene in scene_data:
-
-            print(
-                f"{scene['scene']:<8}"
-                f"{scene['narration']:>9.2f} sec"
-                f"{scene['image_duration']:>14.2f} sec"
+            audio_files.append(
+                audio_file
             )
 
-        print()
+        # ======================================================
+        # 6. GENERATE SCENE SUBTITLES
+        # ======================================================
+
+        subtitle_files = self._run_step(
+            "Generating subtitles...",
+            self.subtitles.generate,
+            scenes,
+            audio_files,
+            verse_folder,
+        )
+
+
+        
+        # ======================================================
+        # 7. RENDER INDIVIDUAL SCENE VIDEOS
+        # ======================================================
+
+        scene_videos = []
+
+        for index in range(
+            1,
+            5,
+        ):
+
+            scene_folder = (
+                self._scene_output_folder(
+                    verse_folder,
+                    index,
+                )
+            )
+
+            scene_video = (
+                scene_folder
+                / "scene_video.mp4"
+            )
+
+            scene_video = self._run_step(
+                f"Rendering Scene {index} video...",
+                self.video.render_scene,
+                image_files[
+                    index - 1
+                ],
+                audio_files[
+                    index - 1
+                ],
+                subtitle_files[
+                    index - 1
+                ],
+                scene_video,
+            )
+
+            scene_video = Path(
+                scene_video
+            )
+
+            if not scene_video.exists():
+
+                raise FileNotFoundError(
+                    f"Scene {index} video was not created:\n"
+                    f"{scene_video}"
+                )
+
+            if scene_video.stat().st_size <= 0:
+
+                raise Exception(
+                    f"Scene {index} video is empty:\n"
+                    f"{scene_video}"
+                )
+
+            scene_videos.append(
+                scene_video
+            )
 
         # ======================================================
-        # 9. RENDER VIDEO
-        #
-        # IMPORTANT:
-        #
-        # VideoRenderer must now accept:
-        #
-        #     image_files
-        #     audio_files
-        #     subtitle_file
-        #     output_folder
-        #
-        # NOT a single audio_file.
+        # 8. PRINT SCENE DURATIONS
+        # ======================================================
+
+        self.video.print_scene_durations(
+            audio_files
+        )
+
+        # ======================================================
+        # 9. RENDER EACH SCENE VIDEO
+        # ======================================================
+
+        scene_videos = []
+
+        for index in range(1, 5):
+
+            scene_folder = (
+                verse_folder
+                / f"scene{index}"
+            )
+
+            scene_video = (
+                scene_folder
+                / "scene_video.mp4"
+            )
+
+            scene_video = self._run_step(
+                f"Rendering Scene {index} video...",
+                self.video.render_scene,
+                image_files[index - 1],
+                audio_files[index - 1],
+                subtitle_files[index - 1],
+                scene_video,
+            )
+
+            scene_videos.append(
+                scene_video
+            )
+
+        # ======================================================
+        # 10. MERGE ALL SCENE VIDEOS
         # ======================================================
 
         video_file = self._run_step(
-            "Rendering final video...",
-            self.video.render,
+            "Merging scene videos...",
+            self.video.merge_scenes,
+            scene_videos,
+            verse_folder,
+        )
+
+        # ======================================================
+        # 11. SAVE SCENE JSON FILES
+        # ======================================================
+
+        for index in range(
+            1,
+            5,
+        ):
+
+            scene_folder = (
+                self._scene_output_folder(
+                    verse_folder,
+                    index,
+                )
+            )
+
+            self._save_scene_json(
+                scene_folder,
+                index,
+                scenes[
+                    index - 1
+                ],
+                image_files[
+                    index - 1
+                ],
+                audio_files[
+                    index - 1
+                ],
+                subtitle_files[
+                    index - 1
+                ],
+                scene_videos[
+                    index - 1
+                ],
+            )
+
+        # ======================================================
+        # 12. SAVE PIPELINE SUMMARY
+        # ======================================================
+
+        self._save_pipeline_summary(
+            verse_folder,
+            scenes,
             image_files,
             audio_files,
-            subtitle_file,
-            output_folder,
+            subtitle_files,
+            scene_videos,
+            video_file,
         )
 
         # ======================================================
-        # 10. SAVE ASSET PATHS
-        # ======================================================
-
-        self._save_json(
-            output_folder
-            / "pipeline_output.json",
-            {
-                "chapter": 1,
-                "verse": 1,
-
-                "output_folder": str(
-                    output_folder
-                ),
-
-                "scene_images": [
-                    str(image)
-                    for image in image_files
-                ],
-
-                "scene_audio": [
-                    str(audio)
-                    for audio in audio_files
-                ],
-
-                "subtitle_file": str(
-                    subtitle_file
-                ),
-
-                "video_file": str(
-                    video_file
-                ),
-            },
-        )
-
-        # ======================================================
-        # 11. COMPLETE
+        # 13. COMPLETE
         # ======================================================
 
         Logger.section(
             "Pipeline Complete"
         )
 
-        for index, audio_file in enumerate(
-            audio_files,
-            start=1,
+        for index in range(
+            1,
+            5,
         ):
 
             Logger.success(
-                f"Scene {index} Audio : {audio_file}"
+                f"Scene {index} video : "
+                f"{scene_videos[index - 1]}"
             )
 
         Logger.success(
-            f"Subtitles : {subtitle_file}"
-        )
-
-        Logger.success(
-            f"Video     : {video_file}"
+            f"Final video : {video_file}"
         )
 
         return True

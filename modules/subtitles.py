@@ -1,17 +1,27 @@
 """
 Subtitle Generator (V3)
 
-Creates subtitles for the four-scene Bhagavad Gita video.
+Creates one subtitle file for each scene.
 
-The subtitle timing is based on the actual scene audio durations,
-not estimated word counts.
+Architecture:
 
-Scene structure:
+    Scene 1 narration + Scene 1 audio
+        -> scene1/subtitles.srt
 
-    Scene 1 text -> Scene 1 audio duration
-    Scene 2 text -> Scene 2 audio duration
-    Scene 3 text -> Scene 3 audio duration
-    Scene 4 text -> Scene 4 audio duration
+    Scene 2 narration + Scene 2 audio
+        -> scene2/subtitles.srt
+
+    Scene 3 narration + Scene 3 audio
+        -> scene3/subtitles.srt
+
+    Scene 4 narration + Scene 4 audio
+        -> scene4/subtitles.srt
+
+Subtitle timing is based on the ACTUAL duration
+of each scene's narration audio.
+
+No word-per-second estimation is used for the
+overall scene duration.
 """
 
 from pathlib import Path
@@ -40,7 +50,7 @@ class SubtitleGenerator:
         scene_texts,
         scene_audio_files,
         output_folder: Path,
-    ) -> Path:
+    ) -> list[Path]:
 
         output_folder = Path(
             output_folder
@@ -51,13 +61,8 @@ class SubtitleGenerator:
             exist_ok=True,
         )
 
-        subtitle_file = (
-            output_folder
-            / "subtitles.srt"
-        )
-
         # -----------------------------------------------------
-        # Validate
+        # Validate scene text list
         # -----------------------------------------------------
 
         if not scene_texts:
@@ -66,13 +71,23 @@ class SubtitleGenerator:
                 "No scene narration text supplied."
             )
 
+        # -----------------------------------------------------
+        # Validate audio list
+        # -----------------------------------------------------
+
         if not scene_audio_files:
 
             raise Exception(
                 "No scene audio files supplied."
             )
 
-        if len(scene_texts) != len(scene_audio_files):
+        # -----------------------------------------------------
+        # Validate counts
+        # -----------------------------------------------------
+
+        if len(scene_texts) != len(
+            scene_audio_files
+        ):
 
             raise Exception(
                 "Number of scene texts does not match "
@@ -82,14 +97,10 @@ class SubtitleGenerator:
             )
 
         # -----------------------------------------------------
-        # Generate subtitles
+        # Generate one SRT per scene
         # -----------------------------------------------------
 
-        subtitle_entries = []
-
-        current_time = 0.0
-
-        subtitle_index = 1
+        subtitle_files = []
 
         for scene_number, (
             text,
@@ -102,14 +113,47 @@ class SubtitleGenerator:
             start=1,
         ):
 
-            text = (
-                str(text)
-                .strip()
+            # -------------------------------------------------
+            # Scene folder
+            # -------------------------------------------------
+
+            scene_folder = (
+                output_folder
+                / f"scene{scene_number}"
             )
+
+            scene_folder.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            # -------------------------------------------------
+            # Subtitle file
+            # -------------------------------------------------
+
+            subtitle_file = (
+                scene_folder
+                / "subtitles.srt"
+            )
+
+            # -------------------------------------------------
+            # Validate text
+            # -------------------------------------------------
+
+            text = str(
+                text
+            ).strip()
 
             if not text:
 
-                continue
+                raise Exception(
+                    f"Scene {scene_number} "
+                    f"narration is empty."
+                )
+
+            # -------------------------------------------------
+            # Validate audio
+            # -------------------------------------------------
 
             audio_file = Path(
                 audio_file
@@ -123,6 +167,18 @@ class SubtitleGenerator:
                     f"{audio_file}"
                 )
 
+            if audio_file.stat().st_size <= 0:
+
+                raise Exception(
+                    f"Scene {scene_number} "
+                    f"audio is 0 KB:\n"
+                    f"{audio_file}"
+                )
+
+            # -------------------------------------------------
+            # Actual audio duration
+            # -------------------------------------------------
+
             audio_duration = (
                 self._audio_duration(
                     audio_file
@@ -135,7 +191,7 @@ class SubtitleGenerator:
             )
 
             # -------------------------------------------------
-            # Split scene into subtitle chunks
+            # Split narration into chunks
             # -------------------------------------------------
 
             chunks = self._make_chunks(
@@ -144,120 +200,344 @@ class SubtitleGenerator:
 
             if not chunks:
 
-                continue
+                raise Exception(
+                    f"Scene {scene_number} "
+                    f"produced no subtitle chunks."
+                )
 
             # -------------------------------------------------
-            # Allocate the actual scene duration across
-            # subtitle chunks according to word count.
+            # Create subtitle timing
             # -------------------------------------------------
 
-            total_words = sum(
-                len(chunk.split())
-                for chunk in chunks
+            entries = (
+                self._create_entries(
+                    chunks,
+                    audio_duration,
+                )
             )
 
-            scene_start = current_time
-
-            for chunk in chunks:
-
-                chunk_words = len(
-                    chunk.split()
-                )
-
-                if total_words > 0:
-
-                    duration = (
-                        audio_duration
-                        * chunk_words
-                        / total_words
-                    )
-
-                else:
-
-                    duration = (
-                        audio_duration
-                        / len(chunks)
-                    )
-
-                start = current_time
-
-                end = (
-                    current_time
-                    + duration
-                )
-
-                subtitle_entries.append(
-                    {
-                        "index": subtitle_index,
-                        "start": start,
-                        "end": end,
-                        "text": chunk,
-                    }
-                )
-
-                subtitle_index += 1
-
-                current_time = end
-
             # -------------------------------------------------
-            # IMPORTANT:
-            #
-            # Force the final subtitle of the scene to end
-            # exactly at the actual audio boundary.
-            #
-            # This prevents Scene 4 from losing its subtitle
-            # because of accumulated floating-point drift.
+            # Write SRT
             # -------------------------------------------------
 
-            current_time = (
-                scene_start
-                + audio_duration
+            self._write_srt(
+                subtitle_file,
+                entries,
             )
 
-            if subtitle_entries:
+            print(
+                f"Scene {scene_number} subtitles written:"
+            )
 
-                subtitle_entries[-1][
-                    "end"
-                ] = current_time
+            print(
+                f"  {subtitle_file}"
+            )
 
-        # =====================================================
-        # WRITE SRT
-        # =====================================================
+            print(
+                f"  Entries: {len(entries)}"
+            )
 
-        with open(
-            subtitle_file,
-            "w",
-            encoding="utf-8",
-            newline="\n",
-        ) as f:
+            subtitle_files.append(
+                subtitle_file
+            )
 
-            for entry in subtitle_entries:
+        # -----------------------------------------------------
+        # Return FOUR subtitle files
+        # -----------------------------------------------------
 
-                f.write(
-                    f"{entry['index']}\n"
-                )
+        return subtitle_files
 
-                f.write(
-                    f"{self._format_time(entry['start'])}"
-                    f" --> "
-                    f"{self._format_time(entry['end'])}\n"
-                )
+    # =========================================================
+    # CREATE TIMED ENTRIES
+    # =========================================================
 
-                f.write(
-                    f"{entry['text']}\n\n"
-                )
+    def _create_entries(
+        self,
+        chunks,
+        audio_duration,
+    ):
 
-        print(
-            f"Subtitles written: "
-            f"{subtitle_file}"
+        if not chunks:
+
+            return []
+
+        # -----------------------------------------------------
+        # Calculate total words
+        # -----------------------------------------------------
+
+        word_counts = [
+            len(
+                chunk.split()
+            )
+            for chunk in chunks
+        ]
+
+        total_words = sum(
+            word_counts
         )
 
-        print(
-            f"Subtitle entries: "
-            f"{len(subtitle_entries)}"
+        if total_words <= 0:
+
+            total_words = len(
+                chunks
+            )
+
+            word_counts = [
+                1
+                for _ in chunks
+            ]
+
+        # -----------------------------------------------------
+        # Allocate actual audio duration
+        # proportionally by words
+        # -----------------------------------------------------
+
+        durations = []
+
+        for word_count in word_counts:
+
+            duration = (
+                audio_duration
+                * word_count
+                / total_words
+            )
+
+            durations.append(
+                duration
+            )
+
+        # -----------------------------------------------------
+        # Make sure we don't create extremely
+        # short subtitle flashes.
+        #
+        # IMPORTANT:
+        # We don't extend the scene beyond the
+        # actual audio duration.
+        # -----------------------------------------------------
+
+        if len(chunks) == 1:
+
+            durations[0] = audio_duration
+
+        else:
+
+            durations = (
+                self._apply_minimum_duration(
+                    durations,
+                    audio_duration,
+                )
+            )
+
+        # -----------------------------------------------------
+        # Build entries
+        # -----------------------------------------------------
+
+        entries = []
+
+        current_time = 0.0
+
+        for index, (
+            chunk,
+            duration,
+        ) in enumerate(
+            zip(
+                chunks,
+                durations,
+            ),
+            start=1,
+        ):
+
+            start = current_time
+
+            end = (
+                current_time
+                + duration
+            )
+
+            entries.append(
+                {
+                    "index": index,
+                    "start": start,
+                    "end": end,
+                    "text": chunk,
+                }
+            )
+
+            current_time = end
+
+        # -----------------------------------------------------
+        # Force final subtitle to end exactly
+        # at the audio boundary.
+        # -----------------------------------------------------
+
+        entries[-1][
+            "end"
+        ] = audio_duration
+
+        return entries
+
+    # =========================================================
+    # MINIMUM DURATION
+    # =========================================================
+
+    def _apply_minimum_duration(
+        self,
+        durations,
+        total_duration,
+    ):
+
+        """
+        Attempts to prevent very short subtitle
+        flashes while NEVER exceeding the actual
+        audio duration.
+        """
+
+        count = len(
+            durations
         )
 
-        return subtitle_file
+        if (
+            total_duration
+            < self.MIN_SUBTITLE_DURATION
+            * count
+        ):
+
+            # Not enough time to give every
+            # subtitle the minimum duration.
+            #
+            # In that case, distribute the
+            # real duration proportionally.
+            return durations
+
+        result = list(
+            durations
+        )
+
+        deficit = 0.0
+
+        # -----------------------------------------------------
+        # First raise short durations
+        # -----------------------------------------------------
+
+        for i in range(
+            count
+        ):
+
+            if (
+                result[i]
+                < self.MIN_SUBTITLE_DURATION
+            ):
+
+                deficit += (
+                    self.MIN_SUBTITLE_DURATION
+                    - result[i]
+                )
+
+                result[i] = (
+                    self.MIN_SUBTITLE_DURATION
+                )
+
+        # -----------------------------------------------------
+        # Remove the added time from longer chunks.
+        # -----------------------------------------------------
+
+        if deficit <= 0:
+
+            return result
+
+        long_indices = [
+
+            i
+
+            for i in range(
+                count
+            )
+
+            if result[i]
+            > self.MIN_SUBTITLE_DURATION
+        ]
+
+        remaining = deficit
+
+        while (
+            remaining > 0.0001
+            and long_indices
+        ):
+
+            available = sum(
+
+                result[i]
+                - self.MIN_SUBTITLE_DURATION
+
+                for i in long_indices
+
+            )
+
+            if available <= 0:
+
+                break
+
+            for i in long_indices:
+
+                available_i = (
+                    result[i]
+                    - self.MIN_SUBTITLE_DURATION
+                )
+
+                if available_i <= 0:
+
+                    continue
+
+                reduction = (
+                    remaining
+                    * available_i
+                    / available
+                )
+
+                reduction = min(
+                    reduction,
+                    available_i,
+                )
+
+                result[i] -= (
+                    reduction
+                )
+
+            remaining = (
+                sum(result)
+                - total_duration
+            )
+
+            if remaining <= 0.0001:
+
+                break
+
+            long_indices = [
+
+                i
+
+                for i in long_indices
+
+                if result[i]
+                > self.MIN_SUBTITLE_DURATION
+                + 0.0001
+
+            ]
+
+        # -----------------------------------------------------
+        # Floating-point correction
+        # -----------------------------------------------------
+
+        difference = (
+            total_duration
+            - sum(result)
+        )
+
+        if result:
+
+            result[-1] += difference
+
+        return result
 
     # =========================================================
     # CREATE SUBTITLE CHUNKS
@@ -270,8 +550,14 @@ class SubtitleGenerator:
 
         text = (
             text
-            .replace("\r", " ")
-            .replace("\n", " ")
+            .replace(
+                "\r",
+                " ",
+            )
+            .replace(
+                "\n",
+                " ",
+            )
         )
 
         text = re.sub(
@@ -285,11 +571,16 @@ class SubtitleGenerator:
             return []
 
         # -----------------------------------------------------
-        # First split at sentence boundaries.
+        # Sentence boundaries
         #
-        # Includes:
-        # . ! ?
-        # Sanskrit । ॥
+        # English:
+        # .
+        # !
+        # ?
+        #
+        # Sanskrit:
+        # ।
+        # ॥
         # -----------------------------------------------------
 
         sentences = re.split(
@@ -306,14 +597,17 @@ class SubtitleGenerator:
         chunks = []
 
         # -----------------------------------------------------
-        # Break long sentences into readable subtitle lines.
+        # Break long sentences
         # -----------------------------------------------------
 
         for sentence in sentences:
 
             words = sentence.split()
 
-            if len(words) <= self.MAX_WORDS_PER_LINE:
+            if (
+                len(words)
+                <= self.MAX_WORDS_PER_LINE
+            ):
 
                 chunks.append(
                     sentence
@@ -352,7 +646,9 @@ class SubtitleGenerator:
 
         command = [
 
-            str(FFPROBE_PATH),
+            str(
+                FFPROBE_PATH
+            ),
 
             "-v",
             "error",
@@ -365,7 +661,9 @@ class SubtitleGenerator:
             "noprint_wrappers=1:"
             "nokey=1",
 
-            str(audio_file),
+            str(
+                audio_file
+            ),
         ]
 
         result = subprocess.run(
@@ -401,6 +699,39 @@ class SubtitleGenerator:
         return duration
 
     # =========================================================
+    # WRITE SRT
+    # =========================================================
+
+    def _write_srt(
+        self,
+        subtitle_file: Path,
+        entries,
+    ):
+
+        with open(
+            subtitle_file,
+            "w",
+            encoding="utf-8",
+            newline="\n",
+        ) as f:
+
+            for entry in entries:
+
+                f.write(
+                    f"{entry['index']}\n"
+                )
+
+                f.write(
+                    f"{self._format_time(entry['start'])}"
+                    f" --> "
+                    f"{self._format_time(entry['end'])}\n"
+                )
+
+                f.write(
+                    f"{entry['text']}\n\n"
+                )
+
+    # =========================================================
     # SRT TIME
     # =========================================================
 
@@ -409,7 +740,6 @@ class SubtitleGenerator:
         seconds: float,
     ) -> str:
 
-        # Prevent negative values
         seconds = max(
             0.0,
             seconds,
