@@ -112,7 +112,7 @@ class SceneComposer:
 
     BRAND_SIZE = 42
 
-    CHAPTER_SIZE = 34
+    CHAPTER_SIZE = 45
 
     SHLOKA_SIZE = 54
 
@@ -128,7 +128,7 @@ class SceneComposer:
 
     BRAND_Y = 65
 
-    CHAPTER_Y = 125
+    CHAPTER_Y = 150
 
     DECORATIVE_LINE_Y = 195
 
@@ -189,7 +189,7 @@ class SceneComposer:
             self._find_font(
                 [
                     "NotoSerifDevanagari-Bold.ttf",
-                    "NotoSansDevanagari-Bold.ttf",
+                    "NotoSerifDevanagari-Regular.ttf",
                 ]
             )
         )
@@ -253,328 +253,379 @@ class SceneComposer:
 
     def _draw_shloka_panel(
         self,
-        image: Image.Image,
-        shloka_text: str,
-    ) -> Image.Image:
+        image,
+        shloka,
+    ):
+        """
+        Premium Sanskrit Shloka panel.
 
-        image = image.convert("RGBA")
-
-        draw = ImageDraw.Draw(
-            image,
-            "RGBA",
-        )
-
-        # =====================================================
-        # PANEL SIZE
-        # =====================================================
-
-        panel_width = int(
-            self.WIDTH * 0.88
-        )
-
-        panel_height = int(
-            self.HEIGHT * 0.30
-        )
-
-        panel_x = (
-            self.WIDTH - panel_width
-        ) // 2
-
-        panel_y = int(
-            self.HEIGHT * 0.62
-        )
-
-        panel_right = (
-            panel_x + panel_width
-        )
-
-        panel_bottom = (
-            panel_y + panel_height
-        )
-
-        # =====================================================
-        # SHADOW
-        # =====================================================
-
-        shadow_layer = Image.new(
-            "RGBA",
-            image.size,
-            (0, 0, 0, 0),
-        )
-
-        shadow_draw = ImageDraw.Draw(
-            shadow_layer,
-            "RGBA",
-        )
-
-        shadow_draw.rounded_rectangle(
-            (
-                panel_x + 8,
-                panel_y + 10,
-                panel_right + 8,
-                panel_bottom + 10,
-            ),
-            radius=28,
-            fill=(
-                0,
-                0,
-                0,
-                170,
-            ),
-        )
-
-        shadow_layer = shadow_layer.filter(
-            ImageFilter.GaussianBlur(12)
-        )
-
-        image = Image.alpha_composite(
-            image,
-            shadow_layer,
-        )
+        Uses the existing RAQM-enabled Devanagari renderer.
+        """
 
         draw = ImageDraw.Draw(
             image,
             "RGBA",
         )
 
-        # =====================================================
-        # MAIN PANEL
-        # =====================================================
+        # ==================================================
+        # PANEL GEOMETRY
+        # ==================================================
 
-        draw.rounded_rectangle(
-            (
-                panel_x,
-                panel_y,
-                panel_right,
-                panel_bottom,
-            ),
-            radius=28,
-            fill=(
-                18,
-                10,
-                5,
-                225,
-            ),
-            outline=(
-                201,
-                154,
-                61,
-                255,
-            ),
-            width=4,
+        panel_margin_x = int(
+            self.WIDTH * 0.11
         )
 
-        # =====================================================
-        # INNER BORDER
-        # =====================================================
-
-        inset = 12
-
-        draw.rounded_rectangle(
-            (
-                panel_x + inset,
-                panel_y + inset,
-                panel_right - inset,
-                panel_bottom - inset,
-            ),
-            radius=20,
-            outline=(
-                139,
-                101,
-                35,
-                220,
-            ),
-            width=2,
+        panel_width = (
+            self.WIDTH
+            - (panel_margin_x * 2)
         )
 
-        # =====================================================
-        # CORNER ORNAMENTS
-        # =====================================================
+        panel_top = int(
+            self.HEIGHT * 0.55
+        )
 
-        gold = (
-            220,
+        panel_bottom = int(
+            self.HEIGHT * 0.70
+        )
+
+        radius = 32
+
+        # ==================================================
+        # COLORS
+        # ==================================================
+
+        panel_fill = (
+            20,
+            14,
+            8,
+            225,
+        )
+
+        outer_gold = (
+            214,
             174,
-            76,
+            82,
+            245,
+        )
+
+        bright_gold = (
+            244,
+            211,
+            126,
             255,
         )
 
-        self._draw_corner_ornament(
-            draw,
-            panel_x + 24,
-            panel_y + 24,
-            gold,
-            flip_x=False,
-            flip_y=False,
+        inner_gold = (
+            166,
+            123,
+            48,
+            180,
         )
 
-        self._draw_corner_ornament(
-            draw,
-            panel_right - 24,
-            panel_y + 24,
-            gold,
-            flip_x=True,
-            flip_y=False,
+        shadow = (
+            0,
+            0,
+            0,
+            130,
         )
 
-        self._draw_corner_ornament(
-            draw,
-            panel_x + 24,
-            panel_bottom - 24,
-            gold,
-            flip_x=False,
-            flip_y=True,
-        )
+        # ==================================================
+        # SOFT PANEL SHADOW
+        # ==================================================
 
-        self._draw_corner_ornament(
-            draw,
-            panel_right - 24,
-            panel_bottom - 24,
-            gold,
-            flip_x=True,
-            flip_y=True,
-        )
+        shadow_offset = 8
 
-        # =====================================================
-        # SHLOKA HEADING
-        # =====================================================
-
-        heading_font = self._font(
-            62,
-            bold=True,
-        )
-
-        heading = "श्लोक"
-
-        bbox = draw.textbbox(
-            (0, 0),
-            heading,
-            font=heading_font,
-        )
-
-        heading_width = (
-            bbox[2] - bbox[0]
-        )
-
-        heading_x = (
-            self.WIDTH - heading_width
-        ) // 2
-
-        heading_y = (
-            panel_y + 28
-        )
-
-        # Heading shadow
-        draw.text(
+        draw.rounded_rectangle(
             (
-                heading_x + 3,
-                heading_y + 3,
+                panel_margin_x + shadow_offset,
+                panel_top + shadow_offset,
+                panel_margin_x
+                + panel_width
+                + shadow_offset,
+                panel_bottom + shadow_offset,
             ),
-            heading,
-            font=heading_font,
-            fill=(
-                0,
-                0,
-                0,
-                220,
-            ),
+            radius=radius,
+            fill=shadow,
         )
 
-        # Heading
-        draw.text(
+        # ==================================================
+        # MAIN PANEL
+        # ==================================================
+
+        draw.rounded_rectangle(
             (
-                heading_x,
-                heading_y,
+                panel_margin_x,
+                panel_top,
+                panel_margin_x + panel_width,
+                panel_bottom,
             ),
-            heading,
-            font=heading_font,
-            fill=(
-                239,
-                202,
-                116,
-                255,
+            radius=radius,
+            fill=panel_fill,
+            outline=outer_gold,
+            width=4,
+        )
+
+        # ==================================================
+        # INNER BORDER
+        # ==================================================
+
+        inner_padding = 10
+
+        draw.rounded_rectangle(
+            (
+                panel_margin_x + inner_padding,
+                panel_top + inner_padding,
+                panel_margin_x
+                + panel_width
+                - inner_padding,
+                panel_bottom - inner_padding,
             ),
+            radius=radius - inner_padding,
+            outline=inner_gold,
+            width=2,
         )
 
-        # =====================================================
-        # DECORATIVE DIVIDER
-        # =====================================================
+        # ==================================================
+        # TOP DECORATIVE LINE
+        # ==================================================
 
-        divider_y = (
-            panel_y + 105
-        )
+        center_x = self.WIDTH // 2
 
-        center_x = (
-            self.WIDTH // 2
-        )
+        ornament_y = panel_top + 32
 
-        divider_width = 230
+        line_width = 115
 
         draw.line(
             (
-                center_x - divider_width,
-                divider_y,
-                center_x - 25,
-                divider_y,
+                center_x - line_width,
+                ornament_y,
+                center_x - 22,
+                ornament_y,
             ),
-            fill=gold,
+            fill=inner_gold,
             width=2,
         )
 
         draw.line(
             (
-                center_x + 25,
-                divider_y,
-                center_x + divider_width,
-                divider_y,
+                center_x + 22,
+                ornament_y,
+                center_x + line_width,
+                ornament_y,
             ),
-            fill=gold,
+            fill=inner_gold,
             width=2,
         )
 
-        # Center diamond
+        # ==================================================
+        # CENTER DIAMOND
+        # ==================================================
+
+        diamond_size = 9
+
         draw.polygon(
             [
                 (
                     center_x,
-                    divider_y - 9,
+                    ornament_y - diamond_size,
                 ),
                 (
-                    center_x + 9,
-                    divider_y,
+                    center_x + diamond_size,
+                    ornament_y,
                 ),
                 (
                     center_x,
-                    divider_y + 9,
+                    ornament_y + diamond_size,
                 ),
                 (
-                    center_x - 9,
-                    divider_y,
+                    center_x - diamond_size,
+                    ornament_y,
                 ),
             ],
-            fill=gold,
+            fill=bright_gold,
         )
 
-        # =====================================================
+        # ==================================================
+        # SHLOKA HEADING
+        # ==================================================
+
+        heading_font = self._font(
+            38,
+            bold=True,
+        )
+
+        heading_y = (
+            panel_top + 48
+        )
+
+        self._draw_centered_devanagari(
+            draw,
+            "श्लोक",
+            heading_font,
+            heading_y,
+            bright_gold,
+            shadow=True,
+        )
+
+        # ==================================================
         # SHLOKA TEXT
-        # =====================================================
+        # ==================================================
 
         shloka_font = self._font(
-            42,
+            34,
             bold=False,
         )
 
-        lines = self._wrap_devanagari(
-            shloka_text,
-            shloka_font,
-            panel_width - 100,
-            draw,
+        # --------------------------------------------------
+        # Normalize input
+        # --------------------------------------------------
+
+        if shloka is None:
+            return
+
+        shloka = str(
+            shloka
+        ).strip()
+
+        if not shloka:
+            return
+
+        # --------------------------------------------------
+        # Split into lines
+        # --------------------------------------------------
+
+        lines = [
+            line.strip()
+            for line in shloka.splitlines()
+            if line.strip()
+        ]
+
+        # If the source is one long line, wrap it.
+        if len(lines) == 1:
+
+            words = lines[0].split()
+
+            wrapped = []
+
+            current = ""
+
+            max_chars = 42
+
+            for word in words:
+
+                test = (
+                    word
+                    if not current
+                    else current + " " + word
+                )
+
+                if len(test) <= max_chars:
+
+                    current = test
+
+                else:
+
+                    if current:
+                        wrapped.append(
+                            current
+                        )
+
+                    current = word
+
+            if current:
+                wrapped.append(
+                    current
+                )
+
+            lines = wrapped
+
+        # ==================================================
+        # TEXT AREA
+        # ==================================================
+
+        text_area_top = (
+            panel_top + 105
         )
 
-        text_y = (
-            divider_y + 35
+        text_area_bottom = (
+            panel_bottom - 38
         )
+
+        available_height = (
+            text_area_bottom
+            - text_area_top
+        )
+
+        # ==================================================
+        # LINE SPACING
+        # ==================================================
 
         line_spacing = 12
+
+        bbox = draw.textbbox(
+            (0, 0),
+            "अ",
+            font=shloka_font,
+            anchor="lt",
+            direction="ltr",
+            language="hi",
+        )
+
+        line_height = (
+            bbox[3] - bbox[1]
+        )
+
+        total_height = (
+            len(lines) * line_height
+            + (len(lines) - 1)
+            * line_spacing
+        )
+
+        # ==================================================
+        # AUTO-SCALE IF NEEDED
+        # ==================================================
+
+        if total_height > available_height:
+
+            shloka_font = self._font(
+                29,
+                bold=False,
+            )
+
+            bbox = draw.textbbox(
+                (0, 0),
+                "अ",
+                font=shloka_font,
+                anchor="lt",
+                direction="ltr",
+                language="hi",
+            )
+
+            line_height = (
+                bbox[3] - bbox[1]
+            )
+
+            total_height = (
+                len(lines) * line_height
+                + (len(lines) - 1)
+                * line_spacing
+            )
+
+        # ==================================================
+        # CENTER TEXT BLOCK VERTICALLY
+        # ==================================================
+
+        start_y = (
+            text_area_top
+            + (
+                available_height
+                - total_height
+            ) // 2
+        )
+
+        # ==================================================
+        # DRAW EACH LINE
+        # ==================================================
 
         for line in lines:
 
@@ -582,21 +633,28 @@ class SceneComposer:
                 (0, 0),
                 line,
                 font=shloka_font,
+                anchor="lt",
+                direction="ltr",
+                language="hi",
             )
 
             line_width = (
                 bbox[2] - bbox[0]
             )
 
-            text_x = (
-                self.WIDTH - line_width
+            x = (
+                self.WIDTH
+                - line_width
             ) // 2
 
+            # ----------------------------------------------
             # Shadow
+            # ----------------------------------------------
+
             draw.text(
                 (
-                    text_x + 2,
-                    text_y + 2,
+                    x + 2,
+                    start_y + 3,
                 ),
                 line,
                 font=shloka_font,
@@ -604,32 +662,95 @@ class SceneComposer:
                     0,
                     0,
                     0,
-                    220,
+                    210,
                 ),
+                anchor="lt",
+                direction="ltr",
+                language="hi",
             )
 
+            # ----------------------------------------------
             # Sanskrit
+            # ----------------------------------------------
+
             draw.text(
                 (
-                    text_x,
-                    text_y,
+                    x,
+                    start_y,
                 ),
                 line,
                 font=shloka_font,
                 fill=(
-                    245,
-                    237,
-                    215,
+                    248,
+                    240,
+                    218,
                     255,
                 ),
+                anchor="lt",
+                direction="ltr",
+                language="hi",
             )
 
-            text_y += (
-                bbox[3]
-                - bbox[1]
+            start_y += (
+                line_height
                 + line_spacing
             )
 
+        # ==================================================
+        # BOTTOM ORNAMENT
+        # ==================================================
+
+        ornament_y = (
+            panel_bottom - 24
+        )
+
+        line_width = 85
+
+        draw.line(
+            (
+                center_x - line_width,
+                ornament_y,
+                center_x - 16,
+                ornament_y,
+            ),
+            fill=inner_gold,
+            width=2,
+        )
+
+        draw.line(
+            (
+                center_x + 16,
+                ornament_y,
+                center_x + line_width,
+                ornament_y,
+            ),
+            fill=inner_gold,
+            width=2,
+        )
+
+        diamond_size = 6
+
+        draw.polygon(
+            [
+                (
+                    center_x,
+                    ornament_y - diamond_size,
+                ),
+                (
+                    center_x + diamond_size,
+                    ornament_y,
+                ),
+                (
+                    center_x,
+                    ornament_y + diamond_size,
+                ),
+                (
+                    center_x - diamond_size,
+                    ornament_y,
+                ),
+            ],
+            fill=bright_gold,
+        )
         return image
 
     # =========================================================
@@ -848,34 +969,101 @@ class SceneComposer:
     def _draw_decorative_divider(
         self,
         draw,
-        center_x,
-        y,
-        width=360,
+        center_x: int,
+        y: int,
+        width: int = 400,
     ):
         """
-        Premium devotional divider.
+        Premium ornamental divider for the Chapter / Verse section.
+
+        Designed to visually match the Shloka panel:
+        - layered gold lines
+        - central diamond ornament
+        - small side diamonds
+        - subtle glow
+        - symmetrical composition
         """
 
-        gold = (
-            220,
-            174,
-            76,
+        # ==================================================
+        # COLORS
+        # ==================================================
+
+        bright_gold = (
+            244,
+            211,
+            126,
             255,
         )
 
-        gold_soft = (
-            170,
-            125,
-            45,
-            220,
+        light_gold = (
+            232,
+            190,
+            94,
+            240,
         )
 
-        # -----------------------------------------------------
-        # Main left line
-        # -----------------------------------------------------
+        dark_gold = (
+            155,
+            111,
+            42,
+            180,
+        )
 
-        left_start = center_x - width // 2
-        left_end = center_x - 32
+        glow_gold = (
+            244,
+            211,
+            126,
+            55,
+        )
+
+        # ==================================================
+        # DIMENSIONS
+        # ==================================================
+
+        half_width = width // 2
+
+        main_line_width = 2
+        secondary_line_width = 1
+
+        # Central ornament
+        center_diamond = 9
+
+        # Side ornaments
+        side_diamond = 4
+
+        # Distance from center ornament
+        ornament_gap = 24
+
+        # ==================================================
+        # SUBTLE GLOW
+        # ==================================================
+
+        glow_half_width = half_width + 10
+
+        draw.line(
+            (
+                center_x - glow_half_width,
+                y,
+                center_x + glow_half_width,
+                y,
+            ),
+            fill=glow_gold,
+            width=5,
+        )
+
+        # ==================================================
+        # MAIN LEFT LINE
+        # ==================================================
+
+        left_start = (
+            center_x
+            - half_width
+        )
+
+        left_end = (
+            center_x
+            - ornament_gap
+        )
 
         draw.line(
             (
@@ -884,16 +1072,23 @@ class SceneComposer:
                 left_end,
                 y,
             ),
-            fill=gold_soft,
-            width=2,
+            fill=light_gold,
+            width=main_line_width,
         )
 
-        # -----------------------------------------------------
-        # Main right line
-        # -----------------------------------------------------
+        # ==================================================
+        # MAIN RIGHT LINE
+        # ==================================================
 
-        right_start = center_x + 32
-        right_end = center_x + width // 2
+        right_start = (
+            center_x
+            + ornament_gap
+        )
+
+        right_end = (
+            center_x
+            + half_width
+        )
 
         draw.line(
             (
@@ -902,125 +1097,196 @@ class SceneComposer:
                 right_end,
                 y,
             ),
-            fill=gold_soft,
-            width=2,
+            fill=light_gold,
+            width=main_line_width,
         )
 
-        # -----------------------------------------------------
-        # Small secondary lines
-        # -----------------------------------------------------
+        # ==================================================
+        # SECONDARY INNER LINES
+        # ==================================================
+
+        inner_offset = 5
 
         draw.line(
             (
-                left_start + 15,
-                y + 5,
-                left_end - 15,
-                y + 5,
+                left_start + 20,
+                y + inner_offset,
+                left_end - 8,
+                y + inner_offset,
             ),
-            fill=(
-                120,
-                85,
-                30,
-                150,
-            ),
-            width=1,
+            fill=dark_gold,
+            width=secondary_line_width,
         )
 
         draw.line(
             (
-                right_start + 15,
-                y + 5,
-                right_end - 15,
-                y + 5,
+                right_start + 8,
+                y + inner_offset,
+                right_end - 20,
+                y + inner_offset,
             ),
-            fill=(
-                120,
-                85,
-                30,
-                150,
-            ),
-            width=1,
+            fill=dark_gold,
+            width=secondary_line_width,
         )
 
-        # -----------------------------------------------------
-        # Center diamond
-        # -----------------------------------------------------
-
-        diamond = 10
+        # ==================================================
+        # CENTER DIAMOND
+        # ==================================================
 
         draw.polygon(
             [
                 (
                     center_x,
-                    y - diamond,
+                    y - center_diamond,
                 ),
                 (
-                    center_x + diamond,
+                    center_x + center_diamond,
                     y,
                 ),
                 (
                     center_x,
-                    y + diamond,
+                    y + center_diamond,
                 ),
                 (
-                    center_x - diamond,
+                    center_x - center_diamond,
                     y,
                 ),
             ],
-            fill=gold,
+            fill=bright_gold,
         )
 
-        # -----------------------------------------------------
-        # Center circle
-        # -----------------------------------------------------
+        # ==================================================
+        # CENTER DIAMOND INNER DETAIL
+        # ==================================================
 
-        draw.ellipse(
-            (
-                center_x - 3,
-                y - 3,
-                center_x + 3,
-                y + 3,
-            ),
+        inner_diamond = 4
+
+        draw.polygon(
+            [
+                (
+                    center_x,
+                    y - inner_diamond,
+                ),
+                (
+                    center_x + inner_diamond,
+                    y,
+                ),
+                (
+                    center_x,
+                    y + inner_diamond,
+                ),
+                (
+                    center_x - inner_diamond,
+                    y,
+                ),
+            ],
             fill=(
-                245,
-                210,
-                130,
+                255,
+                232,
+                160,
                 255,
             ),
         )
 
-        # -----------------------------------------------------
-        # Small side diamonds
-        # -----------------------------------------------------
+        # ==================================================
+        # LEFT SIDE DIAMOND
+        # ==================================================
 
-        for offset in (-22, 22):
+        left_ornament_x = (
+            center_x
+            - ornament_gap
+        )
 
-            cx = center_x + offset
+        draw.polygon(
+            [
+                (
+                    left_ornament_x,
+                    y - side_diamond,
+                ),
+                (
+                    left_ornament_x + side_diamond,
+                    y,
+                ),
+                (
+                    left_ornament_x,
+                    y + side_diamond,
+                ),
+                (
+                    left_ornament_x - side_diamond,
+                    y,
+                ),
+            ],
+            fill=bright_gold,
+        )
 
-            size = 4
+        # ==================================================
+        # RIGHT SIDE DIAMOND
+        # ==================================================
 
-            draw.polygon(
-                [
-                    (
-                        cx,
-                        y - size,
-                    ),
-                    (
-                        cx + size,
-                        y,
-                    ),
-                    (
-                        cx,
-                        y + size,
-                    ),
-                    (
-                        cx - size,
-                        y,
-                    ),
-                ],
-                fill=gold_soft,
-            )
+        right_ornament_x = (
+            center_x
+            + ornament_gap
+        )
 
+        draw.polygon(
+            [
+                (
+                    right_ornament_x,
+                    y - side_diamond,
+                ),
+                (
+                    right_ornament_x + side_diamond,
+                    y,
+                ),
+                (
+                    right_ornament_x,
+                    y + side_diamond,
+                ),
+                (
+                    right_ornament_x - side_diamond,
+                    y,
+                ),
+            ],
+            fill=bright_gold,
+        )
+
+        # ==================================================
+        # SMALL OUTER DOTS
+        # ==================================================
+
+        dot_radius = 2
+
+        dot_gap = 48
+
+        left_dot_x = (
+            center_x
+            - dot_gap
+        )
+
+        right_dot_x = (
+            center_x
+            + dot_gap
+        )
+
+        draw.ellipse(
+            (
+                left_dot_x - dot_radius,
+                y - dot_radius,
+                left_dot_x + dot_radius,
+                y + dot_radius,
+            ),
+            fill=bright_gold,
+        )
+
+        draw.ellipse(
+            (
+                right_dot_x - dot_radius,
+                y - dot_radius,
+                right_dot_x + dot_radius,
+                y + dot_radius,
+            ),
+            fill=bright_gold,
+        )
 
     # =========================================================
     # FONT HELPERS
@@ -1058,6 +1324,82 @@ class SceneComposer:
         return None
 
     # =========================================================
+    # NEW DEVNAGARI FONT
+    # =========================================================
+
+    def _draw_centered_devanagari(
+        self,
+        draw,
+        text: str,
+        font,
+        y: int,
+        fill,
+        shadow=True,
+        shadow_offset=3,
+    ):
+        """
+        Proper Devanagari/Sanskrit renderer.
+
+        Uses Pillow RAQM layout engine, which provides
+        HarfBuzz shaping and FriBiDi support.
+        """
+
+        if not text:
+            return
+
+        bbox = draw.textbbox(
+            (0, 0),
+            text,
+            font=font,
+            anchor="lt",
+            direction="ltr",
+            language="hi",
+        )
+
+        text_width = (
+            bbox[2] - bbox[0]
+        )
+
+        text_x = (
+            self.WIDTH - text_width
+        ) // 2
+
+        if shadow:
+
+            draw.text(
+                (
+                    text_x + shadow_offset,
+                    y + shadow_offset,
+                ),
+                text,
+                font=font,
+                fill=(
+                    0,
+                    0,
+                    0,
+                    220,
+                ),
+                anchor="lt",
+                direction="ltr",
+                language="hi",
+            )
+
+        draw.text(
+            (
+                text_x,
+                y,
+            ),
+            text,
+            font=font,
+            fill=fill,
+            anchor="lt",
+            direction="ltr",
+            language="hi",
+        )
+
+
+
+    # =========================================================
     # LOAD FONT
     # =========================================================
 
@@ -1065,28 +1407,18 @@ class SceneComposer:
         self,
         size: int,
         bold: bool = False,
-        devanagari: bool = False,
-        ) -> ImageFont.FreeTypeFont:
+    ) -> ImageFont.FreeTypeFont:
 
-        if devanagari:
-
-            path = (
-                self.devanagari_bold_font
-                if bold
-                else self.devanagari_font
-            )
-
-        else:
-
-            path = (
-                self.bold_font
-                if bold
-                else self.font
-            )
+        path = (
+            self.devanagari_bold_font
+            if bold
+            else self.devanagari_font
+        )
 
         return ImageFont.truetype(
             str(path),
             size,
+            layout_engine=ImageFont.Layout.RAQM,
         )
 
     # =========================================================
@@ -1545,6 +1877,12 @@ class SceneComposer:
         # DRAW
         # =====================================================
 
+        if image is None:
+            raise ValueError(
+                f"Scene {scene_number}: image is None before drawing."
+            )
+
+
         draw = ImageDraw.Draw(
             image
         )
@@ -1554,47 +1892,39 @@ class SceneComposer:
         # =====================================================
 
         brand_font = self._font(
-            self.BRAND_SIZE,
-            bold=True,
+        58,
+        bold=True,
         )
 
-
-
-        self._draw_centered_text(
+        self._draw_centered_devanagari(
             draw,
             "श्रीमद्भगवद्गीता",
-            self._font(
-                58,
-                bold=True,
-                devanagari=True,
-            ),
+            brand_font,
             self.BRAND_Y,
             self.LIGHT_GOLD,
-        )
-
-        
+        )      
 
         # =====================================================
         # CHAPTER / VERSE
         # =====================================================
 
         chapter_font = self._font(
-            self.CHAPTER_SIZE,
+            42,
             bold=True,
         )
 
-        chapter_text = (
-            f"अध्याय {chapter}  •  श्लोक {verse}"
-        )
-
-        self._draw_centered_text(
+        self._draw_centered_devanagari(
             draw,
-            chapter_text,
+            "अध्याय 1  •  श्लोक 1",
             chapter_font,
             self.CHAPTER_Y,
-            self.IVORY,
+            self.LIGHT_GOLD,
         )
 
+        footer_font = self._font(
+            36,
+            bold=True,
+        )
         # =====================================================
         # DECORATIVE LINE
         # =====================================================
@@ -1610,23 +1940,14 @@ class SceneComposer:
             line_x1
             + line_width
         )
-    ### HERE
+
         self._draw_decorative_divider(
-        draw,
-        center_x=self.WIDTH // 2,
-        y=self.DECORATIVE_LINE_Y,
-        width=360,
-    )
-        # draw.line(
-        #     (
-        #         line_x1,
-        #         self.DECORATIVE_LINE_Y,
-        #         line_x2,
-        #         self.DECORATIVE_LINE_Y,
-        #     ),
-        #     fill=self.GOLD,
-        #     width=3,
-        # )
+            draw,
+            center_x=self.WIDTH // 2,
+            y=self.DECORATIVE_LINE_Y + 20,
+            width=400,
+            )
+        
 
         # =====================================================
         # SHLOKA
@@ -1640,6 +1961,11 @@ class SceneComposer:
                     shloka,
                 )
             )
+
+            if image is None:
+                raise ValueError(
+                    f"Scene {scene_number}: image is None before drawing."
+                )
 
             draw = ImageDraw.Draw(
                 image
@@ -1708,11 +2034,6 @@ class SceneComposer:
             "RGB"
         )
 
-        image = self._draw_shloka_panel(
-            image,
-            shloka,
-        )
-
         image.save(
             output_file,
             format="PNG",
@@ -1727,6 +2048,7 @@ class SceneComposer:
         )
 
         return output_file
+    
 
     # =========================================================
     # COMPOSE ALL FOUR SCENES

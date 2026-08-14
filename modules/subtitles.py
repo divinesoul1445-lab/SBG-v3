@@ -20,8 +20,13 @@ Architecture:
 Subtitle timing is based on the ACTUAL duration
 of each scene's narration audio.
 
-No word-per-second estimation is used for the
-overall scene duration.
+The subtitle generator controls:
+    - subtitle chunking
+    - subtitle timing
+    - scene boundaries
+    - readable caption lengths
+
+Visual styling is handled by videos.py / FFmpeg.
 """
 
 from pathlib import Path
@@ -37,9 +42,15 @@ class SubtitleGenerator:
     # SETTINGS
     # =========================================================
 
-    MAX_WORDS_PER_LINE = 7
+    # Prefer short cinematic captions.
+    MAX_WORDS_PER_LINE = 6
 
+    # Avoid extremely short subtitle flashes.
     MIN_SUBTITLE_DURATION = 0.8
+
+    # Prefer at least this many words before forcing
+    # a new caption, unless a sentence boundary occurs.
+    MIN_WORDS_PER_CHUNK = 3
 
     # =========================================================
     # PUBLIC METHOD
@@ -191,7 +202,7 @@ class SubtitleGenerator:
             )
 
             # -------------------------------------------------
-            # Split narration into chunks
+            # Split narration
             # -------------------------------------------------
 
             chunks = self._make_chunks(
@@ -206,7 +217,7 @@ class SubtitleGenerator:
                 )
 
             # -------------------------------------------------
-            # Create subtitle timing
+            # Create timed entries
             # -------------------------------------------------
 
             entries = (
@@ -262,7 +273,7 @@ class SubtitleGenerator:
             return []
 
         # -----------------------------------------------------
-        # Calculate total words
+        # Calculate word counts
         # -----------------------------------------------------
 
         word_counts = [
@@ -288,8 +299,7 @@ class SubtitleGenerator:
             ]
 
         # -----------------------------------------------------
-        # Allocate actual audio duration
-        # proportionally by words
+        # Allocate duration proportionally by words
         # -----------------------------------------------------
 
         durations = []
@@ -307,19 +317,10 @@ class SubtitleGenerator:
             )
 
         # -----------------------------------------------------
-        # Make sure we don't create extremely
-        # short subtitle flashes.
-        #
-        # IMPORTANT:
-        # We don't extend the scene beyond the
-        # actual audio duration.
+        # Prevent extremely short flashes
         # -----------------------------------------------------
 
-        if len(chunks) == 1:
-
-            durations[0] = audio_duration
-
-        else:
+        if len(chunks) > 1:
 
             durations = (
                 self._apply_minimum_duration(
@@ -366,8 +367,7 @@ class SubtitleGenerator:
             current_time = end
 
         # -----------------------------------------------------
-        # Force final subtitle to end exactly
-        # at the audio boundary.
+        # Force exact audio boundary
         # -----------------------------------------------------
 
         entries[-1][
@@ -387,9 +387,8 @@ class SubtitleGenerator:
     ):
 
         """
-        Attempts to prevent very short subtitle
-        flashes while NEVER exceeding the actual
-        audio duration.
+        Prevent very short subtitle flashes without
+        ever exceeding the actual scene duration.
         """
 
         count = len(
@@ -402,11 +401,6 @@ class SubtitleGenerator:
             * count
         ):
 
-            # Not enough time to give every
-            # subtitle the minimum duration.
-            #
-            # In that case, distribute the
-            # real duration proportionally.
             return durations
 
         result = list(
@@ -416,7 +410,7 @@ class SubtitleGenerator:
         deficit = 0.0
 
         # -----------------------------------------------------
-        # First raise short durations
+        # Raise short entries
         # -----------------------------------------------------
 
         for i in range(
@@ -437,32 +431,33 @@ class SubtitleGenerator:
                     self.MIN_SUBTITLE_DURATION
                 )
 
-        # -----------------------------------------------------
-        # Remove the added time from longer chunks.
-        # -----------------------------------------------------
-
         if deficit <= 0:
 
             return result
 
-        long_indices = [
+        # -----------------------------------------------------
+        # Take excess from longer entries
+        # -----------------------------------------------------
 
-            i
+        while deficit > 0.0001:
 
-            for i in range(
-                count
-            )
+            long_indices = [
 
-            if result[i]
-            > self.MIN_SUBTITLE_DURATION
-        ]
+                i
 
-        remaining = deficit
+                for i in range(
+                    count
+                )
 
-        while (
-            remaining > 0.0001
-            and long_indices
-        ):
+                if result[i]
+                > self.MIN_SUBTITLE_DURATION
+                + 0.0001
+
+            ]
+
+            if not long_indices:
+
+                break
 
             available = sum(
 
@@ -477,6 +472,8 @@ class SubtitleGenerator:
 
                 break
 
+            removed = 0.0
+
             for i in long_indices:
 
                 available_i = (
@@ -484,12 +481,8 @@ class SubtitleGenerator:
                     - self.MIN_SUBTITLE_DURATION
                 )
 
-                if available_i <= 0:
-
-                    continue
-
                 reduction = (
-                    remaining
+                    deficit
                     * available_i
                     / available
                 )
@@ -503,29 +496,16 @@ class SubtitleGenerator:
                     reduction
                 )
 
-            remaining = (
-                sum(result)
-                - total_duration
-            )
+                removed += reduction
 
-            if remaining <= 0.0001:
+            deficit -= removed
+
+            if removed <= 0.000001:
 
                 break
 
-            long_indices = [
-
-                i
-
-                for i in long_indices
-
-                if result[i]
-                > self.MIN_SUBTITLE_DURATION
-                + 0.0001
-
-            ]
-
         # -----------------------------------------------------
-        # Floating-point correction
+        # Floating point correction
         # -----------------------------------------------------
 
         difference = (
@@ -547,6 +527,10 @@ class SubtitleGenerator:
         self,
         text: str,
     ):
+
+        # -----------------------------------------------------
+        # Normalize whitespace
+        # -----------------------------------------------------
 
         text = (
             text
@@ -571,14 +555,14 @@ class SubtitleGenerator:
             return []
 
         # -----------------------------------------------------
-        # Sentence boundaries
+        # Split at natural sentence boundaries
         #
         # English:
         # .
         # !
         # ?
         #
-        # Sanskrit:
+        # Devanagari:
         # ।
         # ॥
         # -----------------------------------------------------
@@ -597,12 +581,16 @@ class SubtitleGenerator:
         chunks = []
 
         # -----------------------------------------------------
-        # Break long sentences
+        # Process each sentence
         # -----------------------------------------------------
 
         for sentence in sentences:
 
             words = sentence.split()
+
+            # -------------------------------------------------
+            # Short sentence
+            # -------------------------------------------------
 
             if (
                 len(words)
@@ -615,23 +603,87 @@ class SubtitleGenerator:
 
                 continue
 
-            for start in range(
-                0,
-                len(words),
-                self.MAX_WORDS_PER_LINE,
-            ):
+            # -------------------------------------------------
+            # Long sentence
+            #
+            # Break at natural punctuation first,
+            # then word count.
+            # -------------------------------------------------
 
-                chunk = " ".join(
-                    words[
-                        start:
-                        start
-                        + self.MAX_WORDS_PER_LINE
-                    ]
+            current_words = []
+
+            for word in words:
+
+                current_words.append(
+                    word
                 )
 
-                chunks.append(
-                    chunk
+                # -------------------------------------------------
+                # Normal maximum
+                # -------------------------------------------------
+
+                if len(
+                    current_words
+                ) >= self.MAX_WORDS_PER_LINE:
+
+                    chunks.append(
+                        " ".join(
+                            current_words
+                        )
+                    )
+
+                    current_words = []
+
+            # -------------------------------------------------
+            # Remaining words
+            # -------------------------------------------------
+
+            if current_words:
+
+                remaining = (
+                    " ".join(
+                        current_words
+                    )
                 )
+
+                # If the previous chunk is very short,
+                # merge the remainder into it.
+                if (
+                    chunks
+                    and len(
+                        remaining.split()
+                    )
+                    < self.MIN_WORDS_PER_CHUNK
+                ):
+
+                    combined = (
+                        chunks[-1]
+                        + " "
+                        + remaining
+                    )
+
+                    if len(
+                        combined.split()
+                    ) <= (
+                        self.MAX_WORDS_PER_LINE
+                        + 2
+                    ):
+
+                        chunks[-1] = (
+                            combined
+                        )
+
+                    else:
+
+                        chunks.append(
+                            remaining
+                        )
+
+                else:
+
+                    chunks.append(
+                        remaining
+                    )
 
         return chunks
 
@@ -692,7 +744,7 @@ class SubtitleGenerator:
         if duration <= 0:
 
             raise Exception(
-                f"Audio duration is zero:\n"
+                f"Audio has zero duration:\n"
                 f"{audio_file}"
             )
 
@@ -732,7 +784,7 @@ class SubtitleGenerator:
                 )
 
     # =========================================================
-    # SRT TIME
+    # FORMAT SRT TIME
     # =========================================================
 
     def _format_time(
@@ -740,45 +792,37 @@ class SubtitleGenerator:
         seconds: float,
     ) -> str:
 
-        seconds = max(
-            0.0,
-            seconds,
-        )
-
-        total_milliseconds = int(
+        milliseconds = int(
             round(
                 seconds * 1000
             )
         )
 
         hours = (
-            total_milliseconds
+            milliseconds
             // 3_600_000
         )
 
-        remainder = (
-            total_milliseconds
-            % 3_600_000
+        milliseconds %= (
+            3_600_000
         )
 
         minutes = (
-            remainder
+            milliseconds
             // 60_000
         )
 
-        remainder = (
-            remainder
-            % 60_000
+        milliseconds %= (
+            60_000
         )
 
         secs = (
-            remainder
+            milliseconds
             // 1000
         )
 
-        milliseconds = (
-            remainder
-            % 1000
+        milliseconds %= (
+            1000
         )
 
         return (

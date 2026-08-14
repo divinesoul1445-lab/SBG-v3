@@ -51,27 +51,27 @@ class VideoRenderer:
     # ==========================================================
 
     # Large enough for 1080x1920 Shorts
-    SUBTITLE_FONT = "Arial"
+    SUBTITLE_FONT = "Noto Sans Devanagari"
 
-    SUBTITLE_FONT_SIZE = 52
+    SUBTITLE_FONT_SIZE = 54
 
     SUBTITLE_BOLD = True
 
     # ASS uses BGR/hex formatting internally.
     # FFFFFF = white
-    SUBTITLE_PRIMARY_COLOUR = "&H00FFFFFF"
+    SUBTITLE_PRIMARY_COLOUR = "&H00E6F3FF"
 
     # Black outline
-    SUBTITLE_OUTLINE_COLOUR = "&H00000000"
+    SUBTITLE_OUTLINE_COLOUR = "&H00120A05"
 
     # Slightly transparent black shadow
-    SUBTITLE_SHADOW_COLOUR = "&H80000000"
+    SUBTITLE_SHADOW_COLOUR = "&H90000000"
 
     # Thick cinematic outline
-    SUBTITLE_OUTLINE = 4
+    SUBTITLE_OUTLINE = 3
 
     # Shadow depth
-    SUBTITLE_SHADOW = 2
+    SUBTITLE_SHADOW = 3
 
     # 2 = centered
     SUBTITLE_ALIGNMENT = 2
@@ -80,11 +80,11 @@ class VideoRenderer:
     #
     # 400-ish places subtitles in the lower-middle
     # rather than directly above YouTube controls.
-    SUBTITLE_MARGIN_V = 390
+    SUBTITLE_MARGIN_V = 330
 
     # Horizontal margins
-    SUBTITLE_MARGIN_L = 90
-    SUBTITLE_MARGIN_R = 90
+    SUBTITLE_MARGIN_L = 100
+    SUBTITLE_MARGIN_R = 100
 
     # ==========================================================
     # INITIALIZE
@@ -378,6 +378,32 @@ class VideoRenderer:
                 "1"
             ),
 
+            (
+                "Style: SBG,"
+                f"{self.SUBTITLE_FONT},"
+                f"{self.SUBTITLE_FONT_SIZE},"
+                f"{self.SUBTITLE_PRIMARY_COLOUR},"
+                "&H00000000,"
+                f"{self.SUBTITLE_OUTLINE_COLOUR},"
+                "&H900B0703,"
+                f"{-1 if self.SUBTITLE_BOLD else 0},"
+                "0,"
+                "0,"
+                "0,"
+                "100,"
+                "100,"
+                "1,"
+                "0,"
+                "1,"
+                "3,"
+                "3,"
+                "2,"
+                "100,"
+                "100,"
+                "330,"
+                "1"
+            ),
+
             "",
 
             "[Events]",
@@ -476,7 +502,7 @@ class VideoRenderer:
                     f"0,"
                     f"{start},"
                     f"{end},"
-                    "Default,"
+                    "SBG,"
                     ","
                     "0,"
                     "0,"
@@ -1144,6 +1170,309 @@ class VideoRenderer:
             )
 
         return output_file
+
+    # ==========================================================
+    # RENDER COMPLETE VERSE
+    # ==========================================================
+
+    def render_verse(
+        self,
+        scene_images,
+        scene_audio_files,
+        scene_subtitle_files,
+        output_folder,
+        scene_video_names=None,
+        merge=True,
+    ):
+        """
+        Production renderer for one complete verse.
+
+        Expected order:
+
+            Scene 1 image + audio + SRT
+                -> scene1/scene1.mp4
+
+            Scene 2 image + audio + SRT
+                -> scene2/scene2.mp4
+
+            Scene 3 image + audio + SRT
+                -> scene3/scene3.mp4
+
+            Scene 4 image + audio + SRT
+                -> scene4/scene4.mp4
+
+            scene1.mp4
+            scene2.mp4
+            scene3.mp4
+            scene4.mp4
+                -> merge_scenes()
+                -> final/final_video.mp4
+
+        Background music is added only by merge_scenes(), never to
+        individual scene videos.
+
+        Parameters
+        ----------
+        scene_images:
+            Ordered iterable of 4 scene image paths.
+
+        scene_audio_files:
+            Ordered iterable of 4 narration MP3 paths.
+
+        scene_subtitle_files:
+            Ordered iterable of 4 SRT subtitle paths.
+
+        output_folder:
+            Verse folder, for example:
+                output/chapter_001/verse_001
+
+        scene_video_names:
+            Optional names for the generated scene videos.
+            Defaults to scene1.mp4 ... scene4.mp4.
+
+        merge:
+            If True, merge the four scene videos after rendering.
+        """
+
+        output_folder = Path(
+            output_folder
+        )
+
+        output_folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        # ------------------------------------------------------
+        # Normalize inputs
+        # ------------------------------------------------------
+
+        scene_images = [
+            Path(item)
+            for item in scene_images
+        ]
+
+        scene_audio_files = [
+            Path(item)
+            for item in scene_audio_files
+        ]
+
+        scene_subtitle_files = [
+            Path(item)
+            for item in scene_subtitle_files
+        ]
+
+        if not (
+            len(scene_images)
+            == len(scene_audio_files)
+            == len(scene_subtitle_files)
+            == 4
+        ):
+
+            raise ValueError(
+                "render_verse requires exactly "
+                "4 scene images, 4 audio files, "
+                "and 4 subtitle files."
+            )
+
+        if scene_video_names is None:
+
+            scene_video_names = [
+                f"scene{index}.mp4"
+                for index in range(1, 5)
+            ]
+
+        if len(scene_video_names) != 4:
+
+            raise ValueError(
+                "scene_video_names must contain "
+                "exactly 4 names."
+            )
+
+        # ------------------------------------------------------
+        # Production header
+        # ------------------------------------------------------
+
+        print()
+        print("=" * 80)
+        print("SBG V3 — COMPLETE VERSE RENDER")
+        print("=" * 80)
+        print()
+        print(
+            f"Verse folder: {output_folder}"
+        )
+        print()
+
+        scene_videos = []
+
+        # ------------------------------------------------------
+        # Render Scene 1 -> Scene 4
+        # ------------------------------------------------------
+
+        for index in range(4):
+
+            scene_number = index + 1
+
+            image_file = (
+                scene_images[index]
+            )
+
+            audio_file = (
+                scene_audio_files[index]
+            )
+
+            subtitle_file = (
+                scene_subtitle_files[index]
+            )
+
+            scene_folder = (
+                output_folder
+                / f"scene{scene_number}"
+            )
+
+            scene_folder.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            output_file = (
+                scene_folder
+                / scene_video_names[index]
+            )
+
+            print()
+            print("-" * 80)
+            print(
+                f"SCENE {scene_number} / 4"
+            )
+            print("-" * 80)
+
+            print(
+                f"Image:     {image_file}"
+            )
+
+            print(
+                f"Audio:     {audio_file}"
+            )
+
+            print(
+                f"Subtitles: {subtitle_file}"
+            )
+
+            print(
+                f"Output:    {output_file}"
+            )
+
+            # --------------------------------------------------
+            # Validate before starting FFmpeg
+            # --------------------------------------------------
+
+            self._check_file(
+                image_file,
+                f"Scene {scene_number} image",
+            )
+
+            self._check_file(
+                audio_file,
+                f"Scene {scene_number} narration",
+            )
+
+            self._check_file(
+                subtitle_file,
+                f"Scene {scene_number} subtitles",
+            )
+
+            # --------------------------------------------------
+            # Render
+            # --------------------------------------------------
+
+            rendered = self.render_scene(
+                image_file=image_file,
+                audio_file=audio_file,
+                subtitle_file=subtitle_file,
+                output_file=output_file,
+            )
+
+            rendered = self._check_file(
+                rendered,
+                f"Scene {scene_number} video",
+            )
+
+            scene_videos.append(
+                rendered
+            )
+
+            print(
+                f"✓ Scene {scene_number} complete"
+            )
+
+        # ------------------------------------------------------
+        # Duration table
+        # ------------------------------------------------------
+
+        print()
+        print("=" * 80)
+        print("SCENE DURATIONS")
+        print("=" * 80)
+
+        self.print_scene_durations(
+            scene_audio_files
+        )
+
+        # ------------------------------------------------------
+        # Merge
+        # ------------------------------------------------------
+
+        final_video = None
+
+        if merge:
+
+            print()
+            print("=" * 80)
+            print("MERGING 4 SCENES")
+            print("=" * 80)
+            print()
+
+            final_video = self.merge_scenes(
+                scene_videos=scene_videos,
+                output_folder=output_folder,
+            )
+
+        # ------------------------------------------------------
+        # Final summary
+        # ------------------------------------------------------
+
+        print()
+        print("=" * 80)
+        print("VERSE RENDER COMPLETE")
+        print("=" * 80)
+        print()
+
+        for index, scene_video in enumerate(
+            scene_videos,
+            start=1,
+        ):
+
+            print(
+                f"Scene {index}: "
+                f"{scene_video}"
+            )
+
+        if final_video is not None:
+
+            print()
+            print(
+                f"FINAL VIDEO: "
+                f"{final_video}"
+            )
+
+        print()
+
+        return {
+            "scene_videos": scene_videos,
+            "final_video": final_video,
+            "output_folder": output_folder,
+        }
 
     # ==========================================================
     # SCENE DURATION TABLE
