@@ -123,7 +123,7 @@ BACKGROUND_MUSIC = (
     MUSIC_DIR / "background.mp3"
 )
 
-BACKGROUND_MUSIC_VOLUME = 0.15
+BACKGROUND_MUSIC_VOLUME = 0.30
 
 # =====================================================
 # SUBTITLE
