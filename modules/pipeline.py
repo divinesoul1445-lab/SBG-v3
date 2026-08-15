@@ -11,11 +11,15 @@ Excel
     ↓
 Approved Scene 1–4 Narrations
     ↓
+Fixed Scene Images
+    ↓
+Scene Composer
+    ↓
+Composed Scene Images
+    ↓
 Scene TTS
     ↓
 Scene Subtitles
-    ↓
-Fixed Asset Images
     ↓
 Individual Scene Videos
     ↓
@@ -25,38 +29,51 @@ Background Music
     ↓
 Final Video
 
+
 Output:
 
 output/
 └── chapter_001/
     └── verse_001/
         ├── scene1/
+        │   ├── composed_image.png
         │   ├── narration.mp3
         │   ├── subtitles.srt
         │   └── scene_video.mp4
         │
         ├── scene2/
+        │   ├── composed_image.png
         │   ├── narration.mp3
         │   ├── subtitles.srt
         │   └── scene_video.mp4
         │
         ├── scene3/
+        │   ├── composed_image.png
         │   ├── narration.mp3
         │   ├── subtitles.srt
         │   └── scene_video.mp4
         │
         ├── scene4/
+        │   ├── composed_image.png
         │   ├── narration.mp3
         │   ├── subtitles.srt
         │   └── scene_video.mp4
         │
-        └── final/
-            ├── scenes.txt
-            ├── merged_video.mp4
-            └── final_video.mp4
+        ├── final/
+        │   ├── scenes.txt
+        │   ├── merged_video.mp4
+        │   └── final_video.mp4
+        │
+        └── pipeline_output.json
 
-Images are NEVER generated.
-The four fixed images from assets/images are used.
+
+IMPORTANT:
+
+The four fixed images from assets/images are NEVER modified.
+
+SceneComposer creates the composed versions used by VideoRenderer.
+
+VideoRenderer NEVER receives the raw source images.
 """
 
 
@@ -70,6 +87,7 @@ from modules.sheet import ExcelContentManager
 from modules.tts import TTSGenerator
 from modules.subtitles import SubtitleGenerator
 from modules.videos import VideoRenderer
+from modules.scene_composer import SceneComposer
 
 
 class Pipeline:
@@ -81,6 +99,12 @@ class Pipeline:
         # ------------------------------------------------------
 
         self.excel = ExcelContentManager()
+
+        # ------------------------------------------------------
+        # Scene Composer
+        # ------------------------------------------------------
+
+        self.scene_composer = SceneComposer()
 
         # ------------------------------------------------------
         # TTS
@@ -212,14 +236,10 @@ class Pipeline:
     ):
 
         """
-        IMPORTANT:
-
         This pipeline is intentionally locked to:
 
             Chapter 1
             Verse 1
-
-        No other verse can be selected.
         """
 
         for row in self.excel._rows():
@@ -322,10 +342,10 @@ class Pipeline:
     ):
 
         """
-        DO NOT generate images.
+        Load the four fixed source images.
 
-        Use the four existing fixed images
-        from assets/images.
+        These are NEVER passed directly to VideoRenderer.
+        They are first passed through SceneComposer.
         """
 
         images = []
@@ -351,7 +371,16 @@ class Pipeline:
             if not image.exists():
 
                 raise FileNotFoundError(
-                    f"Scene {scene_number} image not found:\n"
+                    f"Scene {scene_number} source image "
+                    f"not found:\n"
+                    f"{image}"
+                )
+
+            if image.stat().st_size <= 0:
+
+                raise Exception(
+                    f"Scene {scene_number} source image "
+                    f"is empty:\n"
                     f"{image}"
                 )
 
@@ -362,6 +391,113 @@ class Pipeline:
         return images
 
     # ==========================================================
+    # COMPOSE SCENE IMAGES
+    # ==========================================================
+
+    def _compose_scene_images(
+        self,
+        verse_folder,
+        source_images,
+        shloka,
+        chapter,
+        verse,
+    ):
+
+        """
+        Convert the fixed source images into the polished
+        scene images used by the video renderer.
+
+        Input:
+
+            assets/images/SceneX.jpeg
+
+        Output:
+
+            output/chapter_001/verse_001/sceneX/
+                composed_image.png
+        """
+
+        if len(source_images) != 4:
+
+            raise ValueError(
+                "Expected exactly 4 source scene images."
+            )
+
+        composed_images = []
+
+        for index, source_image in enumerate(
+            source_images,
+            start=1,
+        ):
+
+            scene_folder = (
+                self._scene_output_folder(
+                    verse_folder,
+                    index,
+                )
+            )
+
+            output_file = (
+                scene_folder
+                / "composed_image.png"
+            )
+
+            Logger.info(
+                f"Composing Scene {index} image..."
+            )
+
+            Logger.info(
+                f"Source image : {source_image}"
+            )
+
+            Logger.info(
+                f"Output image : {output_file}"
+            )
+
+            composed_image = (
+                self.scene_composer.compose(
+                    image_file=source_image,
+                    output_file=output_file,
+                    shloka=shloka,
+                    chapter=chapter,
+                    verse=verse,
+                    scene_number=index,
+                    show_shloka=True,
+                )
+            )
+
+            composed_image = Path(
+                composed_image
+            )
+
+            if not composed_image.exists():
+
+                raise FileNotFoundError(
+                    f"Scene {index} composed image "
+                    f"was not created:\n"
+                    f"{composed_image}"
+                )
+
+            if composed_image.stat().st_size <= 0:
+
+                raise Exception(
+                    f"Scene {index} composed image "
+                    f"is empty:\n"
+                    f"{composed_image}"
+                )
+
+            Logger.success(
+                f"Scene {index} composed image : "
+                f"{composed_image}"
+            )
+
+            composed_images.append(
+                composed_image
+            )
+
+        return composed_images
+
+    # ==========================================================
     # SAVE SCENE CONTENT
     # ==========================================================
 
@@ -370,7 +506,8 @@ class Pipeline:
         scene_folder,
         scene_number,
         narration,
-        image_file,
+        source_image_file,
+        composed_image_file,
         audio_file,
         subtitle_file,
         video_file,
@@ -386,8 +523,12 @@ class Pipeline:
 
             "narration": narration,
 
-            "image_file": str(
-                image_file
+            "source_image_file": str(
+                source_image_file
+            ),
+
+            "composed_image_file": str(
+                composed_image_file
             ),
 
             "audio_file": str(
@@ -419,6 +560,15 @@ class Pipeline:
         data,
     ):
 
+        file_path = Path(
+            file_path
+        )
+
+        file_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
         with open(
             file_path,
             "w",
@@ -440,7 +590,8 @@ class Pipeline:
         self,
         verse_folder,
         scenes,
-        image_files,
+        source_image_files,
+        composed_image_files,
         audio_files,
         subtitle_files,
         scene_videos,
@@ -455,8 +606,10 @@ class Pipeline:
 
             "scenes": [],
 
-            "final_video": str(
-                final_video
+            "final_video": (
+                str(final_video)
+                if final_video is not None
+                else None
             ),
         }
 
@@ -474,8 +627,14 @@ class Pipeline:
                     index
                 ],
 
-                "image": str(
-                    image_files[
+                "source_image": str(
+                    source_image_files[
+                        index
+                    ]
+                ),
+
+                "composed_image": str(
+                    composed_image_files[
                         index
                     ]
                 ),
@@ -523,7 +682,7 @@ class Pipeline:
         # 1. LOAD CHAPTER 1 VERSE 1
         # ======================================================
 
-        verse = self._run_step(
+        verse_data = self._run_step(
             "Loading Chapter 1, Verse 1...",
             self._get_verse,
         )
@@ -546,33 +705,66 @@ class Pipeline:
         scenes = self._run_step(
             "Loading approved scene narrations...",
             self._get_scene_narrations,
-            verse,
+            verse_data,
         )
 
         # ======================================================
-        # 4. LOAD FIXED IMAGES
+        # 4. LOAD FIXED SOURCE IMAGES
         # ======================================================
 
-        image_files = self._run_step(
+        source_image_files = self._run_step(
             "Loading fixed scene images...",
             self._get_scene_images,
         )
 
-        # ------------------------------------------------------
-        # Display image mapping
-        # ------------------------------------------------------
+        print()
 
         for index, image in enumerate(
-            image_files,
+            source_image_files,
             start=1,
         ):
 
             Logger.success(
-                f"Scene {index} image : {image}"
+                f"Scene {index} source image : "
+                f"{image}"
             )
 
         # ======================================================
-        # 5. GENERATE SCENE AUDIO
+        # 5. COMPOSE SCENE IMAGES
+        # ======================================================
+
+        shloka = (
+            verse_data.get(
+                "Sanskrit"
+            )
+        )
+
+        if (
+            shloka is None
+            or not str(
+                shloka
+            ).strip()
+        ):
+
+            raise Exception(
+                "Sanskrit shloka is empty "
+                "for Chapter 1, Verse 1."
+            )
+
+        composed_image_files = (
+            self._run_step(
+                "Composing Scene 1–4 images...",
+                self._compose_scene_images,
+                verse_folder,
+                source_image_files,
+                str(shloka).strip(),
+                1,
+                1,
+            )
+        )
+
+        # ======================================================
+        # 6. GENERATE SCENE AUDIO
         # ======================================================
 
         audio_files = []
@@ -604,19 +796,22 @@ class Pipeline:
             if not audio_file.exists():
 
                 raise FileNotFoundError(
-                    f"Scene {index} audio was not created:\n"
+                    f"Scene {index} audio "
+                    f"was not created:\n"
                     f"{audio_file}"
                 )
 
             if audio_file.stat().st_size <= 0:
 
                 raise Exception(
-                    f"Scene {index} audio is 0 KB:\n"
+                    f"Scene {index} audio "
+                    f"is 0 KB:\n"
                     f"{audio_file}"
                 )
 
             Logger.success(
-                f"Scene {index} audio : {audio_file}"
+                f"Scene {index} audio : "
+                f"{audio_file}"
             )
 
             audio_files.append(
@@ -624,7 +819,7 @@ class Pipeline:
             )
 
         # ======================================================
-        # 6. GENERATE SCENE SUBTITLES
+        # 7. GENERATE SCENE SUBTITLES
         # ======================================================
 
         subtitle_files = self._run_step(
@@ -635,10 +830,19 @@ class Pipeline:
             verse_folder,
         )
 
+        if len(subtitle_files) != 4:
 
-        
+            raise ValueError(
+                "Expected exactly 4 subtitle files."
+            )
+
         # ======================================================
-        # 7. RENDER INDIVIDUAL SCENE VIDEOS
+        # 8. RENDER INDIVIDUAL SCENE VIDEOS
+        #
+        # IMPORTANT:
+        #
+        # VideoRenderer receives composed images here,
+        # NEVER the raw source images.
         # ======================================================
 
         scene_videos = []
@@ -660,10 +864,20 @@ class Pipeline:
                 / "scene_video.mp4"
             )
 
+            Logger.info(
+                f"Rendering Scene {index} "
+                f"from composed image..."
+            )
+
+            Logger.info(
+                f"Image : "
+                f"{composed_image_files[index - 1]}"
+            )
+
             scene_video = self._run_step(
                 f"Rendering Scene {index} video...",
                 self.video.render_scene,
-                image_files[
+                composed_image_files[
                     index - 1
                 ],
                 audio_files[
@@ -682,14 +896,16 @@ class Pipeline:
             if not scene_video.exists():
 
                 raise FileNotFoundError(
-                    f"Scene {index} video was not created:\n"
+                    f"Scene {index} video "
+                    f"was not created:\n"
                     f"{scene_video}"
                 )
 
             if scene_video.stat().st_size <= 0:
 
                 raise Exception(
-                    f"Scene {index} video is empty:\n"
+                    f"Scene {index} video "
+                    f"is empty:\n"
                     f"{scene_video}"
                 )
 
@@ -698,43 +914,12 @@ class Pipeline:
             )
 
         # ======================================================
-        # 8. PRINT SCENE DURATIONS
+        # 9. PRINT SCENE DURATIONS
         # ======================================================
 
         self.video.print_scene_durations(
             audio_files
         )
-
-        # ======================================================
-        # 9. RENDER EACH SCENE VIDEO
-        # ======================================================
-
-        scene_videos = []
-
-        for index in range(1, 5):
-
-            scene_folder = (
-                verse_folder
-                / f"scene{index}"
-            )
-
-            scene_video = (
-                scene_folder
-                / "scene_video.mp4"
-            )
-
-            scene_video = self._run_step(
-                f"Rendering Scene {index} video...",
-                self.video.render_scene,
-                image_files[index - 1],
-                audio_files[index - 1],
-                subtitle_files[index - 1],
-                scene_video,
-            )
-
-            scene_videos.append(
-                scene_video
-            )
 
         # ======================================================
         # 10. MERGE ALL SCENE VIDEOS
@@ -746,6 +931,24 @@ class Pipeline:
             scene_videos,
             verse_folder,
         )
+
+        video_file = Path(
+            video_file
+        )
+
+        if not video_file.exists():
+
+            raise FileNotFoundError(
+                f"Final video was not created:\n"
+                f"{video_file}"
+            )
+
+        if video_file.stat().st_size <= 0:
+
+            raise Exception(
+                f"Final video is empty:\n"
+                f"{video_file}"
+            )
 
         # ======================================================
         # 11. SAVE SCENE JSON FILES
@@ -764,21 +967,24 @@ class Pipeline:
             )
 
             self._save_scene_json(
-                scene_folder,
-                index,
-                scenes[
+                scene_folder=scene_folder,
+                scene_number=index,
+                narration=scenes[
                     index - 1
                 ],
-                image_files[
+                source_image_file=source_image_files[
                     index - 1
                 ],
-                audio_files[
+                composed_image_file=composed_image_files[
                     index - 1
                 ],
-                subtitle_files[
+                audio_file=audio_files[
                     index - 1
                 ],
-                scene_videos[
+                subtitle_file=subtitle_files[
+                    index - 1
+                ],
+                video_file=scene_videos[
                     index - 1
                 ],
             )
@@ -788,13 +994,14 @@ class Pipeline:
         # ======================================================
 
         self._save_pipeline_summary(
-            verse_folder,
-            scenes,
-            image_files,
-            audio_files,
-            subtitle_files,
-            scene_videos,
-            video_file,
+            verse_folder=verse_folder,
+            scenes=scenes,
+            source_image_files=source_image_files,
+            composed_image_files=composed_image_files,
+            audio_files=audio_files,
+            subtitle_files=subtitle_files,
+            scene_videos=scene_videos,
+            final_video=video_file,
         )
 
         # ======================================================
@@ -809,6 +1016,26 @@ class Pipeline:
             1,
             5,
         ):
+
+            Logger.success(
+                f"Scene {index} source image : "
+                f"{source_image_files[index - 1]}"
+            )
+
+            Logger.success(
+                f"Scene {index} composed image : "
+                f"{composed_image_files[index - 1]}"
+            )
+
+            Logger.success(
+                f"Scene {index} audio : "
+                f"{audio_files[index - 1]}"
+            )
+
+            Logger.success(
+                f"Scene {index} subtitles : "
+                f"{subtitle_files[index - 1]}"
+            )
 
             Logger.success(
                 f"Scene {index} video : "

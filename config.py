@@ -42,16 +42,6 @@ EXCEL_FILE = DATA_DIR / "Bhagavad_Gita.xlsx"
 
 OUTPUT_DIR = ROOT_DIR / "output"
 
-AUDIO_DIR = OUTPUT_DIR / "audio"
-
-IMAGE_DIR = OUTPUT_DIR / "images"
-
-SUBTITLE_DIR = OUTPUT_DIR / "subtitles"
-
-VIDEO_DIR = OUTPUT_DIR / "videos"
-
-THUMBNAIL_DIR = OUTPUT_DIR / "thumbnails"
-
 LOG_DIR = ROOT_DIR / "logs"
 
 # =====================================================
@@ -156,21 +146,8 @@ REQUEST_TIMEOUT = 300
 # =====================================================
 
 DIRECTORIES = [
-
     DATA_DIR,
-
     OUTPUT_DIR,
-
-    AUDIO_DIR,
-
-    IMAGE_DIR,
-
-    SUBTITLE_DIR,
-
-    VIDEO_DIR,
-
-    THUMBNAIL_DIR,
-
     LOG_DIR,
 
 ]

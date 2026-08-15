@@ -1915,7 +1915,7 @@ class SceneComposer:
 
         self._draw_centered_devanagari(
             draw,
-            "अध्याय 1  •  श्लोक 1",
+           f"अध्याय {chapter}  •  श्लोक {verse}",
             chapter_font,
             self.CHAPTER_Y,
             self.LIGHT_GOLD,
