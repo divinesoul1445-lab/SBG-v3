@@ -5,31 +5,28 @@ Creates one subtitle file for each scene.
 
 Architecture:
 
-    Scene 1 narration + Scene 1 audio
-        -> scene1/subtitles.srt
+    Scene narration
+        +
+    Edge TTS narration.mp3
+        +
+    narration.json
+        |
+        v
+    WordBoundary timestamps
+        |
+        v
+    scene/subtitles.srt
 
-    Scene 2 narration + Scene 2 audio
-        -> scene2/subtitles.srt
+Subtitle timing is based on the ACTUAL
+Edge TTS WordBoundary timestamps.
 
-    Scene 3 narration + Scene 3 audio
-        -> scene3/subtitles.srt
-
-    Scene 4 narration + Scene 4 audio
-        -> scene4/subtitles.srt
-
-Subtitle timing is based on the ACTUAL duration
-of each scene's narration audio.
-
-The subtitle generator controls:
-    - subtitle chunking
-    - subtitle timing
-    - scene boundaries
-    - readable caption lengths
+No proportional duration estimation is used.
 
 Visual styling is handled by videos.py / FFmpeg.
 """
 
 from pathlib import Path
+import json
 import re
 import subprocess
 
@@ -42,15 +39,22 @@ class SubtitleGenerator:
     # SETTINGS
     # =========================================================
 
-    # Prefer short cinematic captions.
+    # Maximum words displayed in one subtitle entry.
     MAX_WORDS_PER_LINE = 6
 
-    # Avoid extremely short subtitle flashes.
-    MIN_SUBTITLE_DURATION = 0.8
-
-    # Prefer at least this many words before forcing
-    # a new caption, unless a sentence boundary occurs.
+    # Prefer at least this many words in a chunk.
     MIN_WORDS_PER_CHUNK = 3
+
+    # Very small gaps between words are considered
+    # continuous speech.
+    WORD_GAP_THRESHOLD = 0.45
+
+    # Small minimum duration for a subtitle entry.
+    #
+    # IMPORTANT:
+    # This is NOT used to move subtitle boundaries.
+    # Actual WordBoundary timing remains authoritative.
+    MIN_SUBTITLE_DURATION = 0.25
 
     # =========================================================
     # PUBLIC METHOD
@@ -73,7 +77,7 @@ class SubtitleGenerator:
         )
 
         # -----------------------------------------------------
-        # Validate scene text list
+        # Validate scene texts
         # -----------------------------------------------------
 
         if not scene_texts:
@@ -83,7 +87,7 @@ class SubtitleGenerator:
             )
 
         # -----------------------------------------------------
-        # Validate audio list
+        # Validate audio files
         # -----------------------------------------------------
 
         if not scene_audio_files:
@@ -124,6 +128,19 @@ class SubtitleGenerator:
             start=1,
         ):
 
+            print()
+            print(
+                "-" * 70
+            )
+
+            print(
+                f"SUBTITLE SCENE {scene_number}"
+            )
+
+            print(
+                "-" * 70
+            )
+
             # -------------------------------------------------
             # Scene folder
             # -------------------------------------------------
@@ -148,12 +165,23 @@ class SubtitleGenerator:
             )
 
             # -------------------------------------------------
-            # Validate text
+            # Timing JSON
             # -------------------------------------------------
 
-            text = str(
-                text
-            ).strip()
+            timing_file = (
+                scene_folder
+                / "narration.json"
+            )
+
+            # -------------------------------------------------
+            # Validate narration
+            # -------------------------------------------------
+
+            text = (
+                ""
+                if text is None
+                else str(text).strip()
+            )
 
             if not text:
 
@@ -187,6 +215,27 @@ class SubtitleGenerator:
                 )
 
             # -------------------------------------------------
+            # Validate timing JSON
+            # -------------------------------------------------
+
+            if not timing_file.exists():
+
+                raise FileNotFoundError(
+                    f"Scene {scene_number} "
+                    f"WordBoundary timing file not found:\n"
+                    f"{timing_file}\n\n"
+                    f"Run test_tts.py first."
+                )
+
+            if timing_file.stat().st_size <= 0:
+
+                raise Exception(
+                    f"Scene {scene_number} "
+                    f"timing file is empty:\n"
+                    f"{timing_file}"
+                )
+
+            # -------------------------------------------------
             # Actual audio duration
             # -------------------------------------------------
 
@@ -197,35 +246,58 @@ class SubtitleGenerator:
             )
 
             print(
-                f"Subtitle Scene {scene_number}: "
-                f"{audio_duration:.2f}s"
+                f"Audio duration: "
+                f"{audio_duration:.3f}s"
+            )
+
+            print(
+                f"Timing file:"
+            )
+
+            print(
+                f"  {timing_file}"
             )
 
             # -------------------------------------------------
-            # Split narration
+            # Load WordBoundary timestamps
             # -------------------------------------------------
 
-            chunks = self._make_chunks(
-                text
+            words = (
+                self._load_word_boundaries(
+                    timing_file
+                )
             )
 
-            if not chunks:
+            if not words:
 
                 raise Exception(
                     f"Scene {scene_number} "
-                    f"produced no subtitle chunks."
+                    f"contains no WordBoundary data."
                 )
 
+            print(
+                f"Word boundaries: "
+                f"{len(words)}"
+            )
+
             # -------------------------------------------------
-            # Create timed entries
+            # Build subtitle entries
             # -------------------------------------------------
 
             entries = (
-                self._create_entries(
-                    chunks,
-                    audio_duration,
+                self._create_word_timed_entries(
+                    words=words,
+                    audio_duration=audio_duration,
+                    narration_text=text,
                 )
             )
+
+            if not entries:
+
+                raise Exception(
+                    f"Scene {scene_number} "
+                    f"produced no subtitle entries."
+                )
 
             # -------------------------------------------------
             # Write SRT
@@ -245,7 +317,8 @@ class SubtitleGenerator:
             )
 
             print(
-                f"  Entries: {len(entries)}"
+                f"  Entries: "
+                f"{len(entries)}"
             )
 
             subtitle_files.append(
@@ -253,439 +326,531 @@ class SubtitleGenerator:
             )
 
         # -----------------------------------------------------
-        # Return FOUR subtitle files
+        # Return subtitle files
         # -----------------------------------------------------
 
         return subtitle_files
 
     # =========================================================
-    # CREATE TIMED ENTRIES
+    # LOAD WORD BOUNDARIES
     # =========================================================
 
-    def _create_entries(
+    def _load_word_boundaries(
         self,
-        chunks,
-        audio_duration,
+        timing_file: Path,
     ):
 
-        if not chunks:
-
-            return []
-
-        # -----------------------------------------------------
-        # Calculate word counts
-        # -----------------------------------------------------
-
-        word_counts = [
-            len(
-                chunk.split()
-            )
-            for chunk in chunks
-        ]
-
-        total_words = sum(
-            word_counts
+        timing_file = Path(
+            timing_file
         )
 
-        if total_words <= 0:
+        try:
 
-            total_words = len(
-                chunks
-            )
+            with open(
+                timing_file,
+                "r",
+                encoding="utf-8",
+            ) as f:
 
-            word_counts = [
-                1
-                for _ in chunks
-            ]
-
-        # -----------------------------------------------------
-        # Allocate duration proportionally by words
-        # -----------------------------------------------------
-
-        durations = []
-
-        for word_count in word_counts:
-
-            duration = (
-                audio_duration
-                * word_count
-                / total_words
-            )
-
-            durations.append(
-                duration
-            )
-
-        # -----------------------------------------------------
-        # Prevent extremely short flashes
-        # -----------------------------------------------------
-
-        if len(chunks) > 1:
-
-            durations = (
-                self._apply_minimum_duration(
-                    durations,
-                    audio_duration,
+                data = json.load(
+                    f
                 )
+
+        except json.JSONDecodeError as e:
+
+            raise Exception(
+                f"Invalid narration timing JSON:\n"
+                f"{timing_file}\n"
+                f"{e}"
             )
 
-        # -----------------------------------------------------
-        # Build entries
-        # -----------------------------------------------------
+        words = data.get(
+            "words"
+        )
 
-        entries = []
-
-        current_time = 0.0
-
-        for index, (
-            chunk,
-            duration,
-        ) in enumerate(
-            zip(
-                chunks,
-                durations,
-            ),
-            start=1,
+        if not isinstance(
+            words,
+            list,
         ):
 
-            start = current_time
-
-            end = (
-                current_time
-                + duration
+            raise Exception(
+                f"Invalid WordBoundary structure:\n"
+                f"{timing_file}\n\n"
+                f"Expected a 'words' list."
             )
 
-            entries.append(
+        result = []
+
+        for item in words:
+
+            if not isinstance(
+                item,
+                dict,
+            ):
+
+                continue
+
+            word = item.get(
+                "text"
+            )
+
+            start = item.get(
+                "start"
+            )
+
+            end = item.get(
+                "end"
+            )
+
+            # -------------------------------------------------
+            # Validate timing
+            # -------------------------------------------------
+
+            if word is None:
+
+                continue
+
+            try:
+
+                start = float(
+                    start
+                )
+
+                end = float(
+                    end
+                )
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+
+                continue
+
+            word = str(
+                word
+            ).strip()
+
+            if not word:
+
+                continue
+
+            if end <= start:
+
+                continue
+
+            result.append(
                 {
-                    "index": index,
-                    "start": start,
-                    "end": end,
-                    "text": chunk,
+                    "text": word,
+                    "start": max(
+                        0.0,
+                        start,
+                    ),
+                    "end": max(
+                        0.0,
+                        end,
+                    ),
                 }
             )
 
-            current_time = end
-
         # -----------------------------------------------------
-        # Force exact audio boundary
+        # Sort by actual speech position
         # -----------------------------------------------------
 
-        entries[-1][
-            "end"
-        ] = audio_duration
-
-        return entries
-
-    # =========================================================
-    # MINIMUM DURATION
-    # =========================================================
-
-    def _apply_minimum_duration(
-        self,
-        durations,
-        total_duration,
-    ):
-
-        """
-        Prevent very short subtitle flashes without
-        ever exceeding the actual scene duration.
-        """
-
-        count = len(
-            durations
+        result.sort(
+            key=lambda item:
+                item["start"]
         )
-
-        if (
-            total_duration
-            < self.MIN_SUBTITLE_DURATION
-            * count
-        ):
-
-            return durations
-
-        result = list(
-            durations
-        )
-
-        deficit = 0.0
-
-        # -----------------------------------------------------
-        # Raise short entries
-        # -----------------------------------------------------
-
-        for i in range(
-            count
-        ):
-
-            if (
-                result[i]
-                < self.MIN_SUBTITLE_DURATION
-            ):
-
-                deficit += (
-                    self.MIN_SUBTITLE_DURATION
-                    - result[i]
-                )
-
-                result[i] = (
-                    self.MIN_SUBTITLE_DURATION
-                )
-
-        if deficit <= 0:
-
-            return result
-
-        # -----------------------------------------------------
-        # Take excess from longer entries
-        # -----------------------------------------------------
-
-        while deficit > 0.0001:
-
-            long_indices = [
-
-                i
-
-                for i in range(
-                    count
-                )
-
-                if result[i]
-                > self.MIN_SUBTITLE_DURATION
-                + 0.0001
-
-            ]
-
-            if not long_indices:
-
-                break
-
-            available = sum(
-
-                result[i]
-                - self.MIN_SUBTITLE_DURATION
-
-                for i in long_indices
-
-            )
-
-            if available <= 0:
-
-                break
-
-            removed = 0.0
-
-            for i in long_indices:
-
-                available_i = (
-                    result[i]
-                    - self.MIN_SUBTITLE_DURATION
-                )
-
-                reduction = (
-                    deficit
-                    * available_i
-                    / available
-                )
-
-                reduction = min(
-                    reduction,
-                    available_i,
-                )
-
-                result[i] -= (
-                    reduction
-                )
-
-                removed += reduction
-
-            deficit -= removed
-
-            if removed <= 0.000001:
-
-                break
-
-        # -----------------------------------------------------
-        # Floating point correction
-        # -----------------------------------------------------
-
-        difference = (
-            total_duration
-            - sum(result)
-        )
-
-        if result:
-
-            result[-1] += difference
 
         return result
 
     # =========================================================
-    # CREATE SUBTITLE CHUNKS
+    # CREATE WORD-TIMED ENTRIES
     # =========================================================
 
-    def _make_chunks(
+    def _create_word_timed_entries(
         self,
-        text: str,
+        words,
+        audio_duration,
+        narration_text,
     ):
 
-        # -----------------------------------------------------
-        # Normalize whitespace
-        # -----------------------------------------------------
-
-        text = (
-            text
-            .replace(
-                "\r",
-                " ",
-            )
-            .replace(
-                "\n",
-                " ",
-            )
-        )
-
-        text = re.sub(
-            r"\s+",
-            " ",
-            text,
-        ).strip()
-
-        if not text:
+        if not words:
 
             return []
 
         # -----------------------------------------------------
-        # Split at natural sentence boundaries
-        #
-        # English:
-        # .
-        # !
-        # ?
-        #
-        # Devanagari:
-        # ।
-        # ॥
+        # Clean / normalize boundaries
         # -----------------------------------------------------
 
-        sentences = re.split(
-            r"(?<=[.!?।॥])\s+",
-            text,
-        )
+        cleaned = []
 
-        sentences = [
-            sentence.strip()
-            for sentence in sentences
-            if sentence.strip()
-        ]
+        for item in words:
 
-        chunks = []
+            start = float(
+                item["start"]
+            )
+
+            end = float(
+                item["end"]
+            )
+
+            if start >= audio_duration:
+
+                continue
+
+            end = min(
+                end,
+                audio_duration,
+            )
+
+            if end <= start:
+
+                continue
+
+            cleaned.append(
+                {
+                    "text":
+                        item["text"],
+
+                    "start":
+                        start,
+
+                    "end":
+                        end,
+                }
+            )
+
+        if not cleaned:
+
+            return []
 
         # -----------------------------------------------------
-        # Process each sentence
+        # Group actual spoken words
         # -----------------------------------------------------
 
-        for sentence in sentences:
+        groups = []
 
-            words = sentence.split()
+        current = []
 
-            # -------------------------------------------------
-            # Short sentence
-            # -------------------------------------------------
+        for word in cleaned:
 
-            if (
-                len(words)
-                <= self.MAX_WORDS_PER_LINE
-            ):
+            if not current:
 
-                chunks.append(
-                    sentence
+                current.append(
+                    word
                 )
 
                 continue
 
+            previous = (
+                current[-1]
+            )
+
+            gap = (
+                word["start"]
+                - previous["end"]
+            )
+
+            current_text = " ".join(
+                item["text"]
+                for item in current
+            )
+
             # -------------------------------------------------
-            # Long sentence
-            #
-            # Break at natural punctuation first,
-            # then word count.
+            # Natural punctuation
             # -------------------------------------------------
 
-            current_words = []
+            punctuation_boundary = (
+                self._ends_sentence(
+                    previous["text"]
+                )
+            )
 
-            for word in words:
+            # -------------------------------------------------
+            # Maximum words
+            # -------------------------------------------------
 
-                current_words.append(
+            max_words_reached = (
+                len(current)
+                >= self.MAX_WORDS_PER_LINE
+            )
+
+            # -------------------------------------------------
+            # Large pause
+            # -------------------------------------------------
+
+            large_gap = (
+                gap
+                >= self.WORD_GAP_THRESHOLD
+            )
+
+            # -------------------------------------------------
+            # Decide whether to start a new subtitle
+            # -------------------------------------------------
+
+            should_split = False
+
+            if max_words_reached:
+
+                should_split = True
+
+            elif (
+                punctuation_boundary
+                and len(current)
+                >= self.MIN_WORDS_PER_CHUNK
+            ):
+
+                should_split = True
+
+            elif (
+                large_gap
+                and len(current)
+                >= self.MIN_WORDS_PER_CHUNK
+            ):
+
+                should_split = True
+
+            if should_split:
+
+                groups.append(
+                    current
+                )
+
+                current = [
+                    word
+                ]
+
+            else:
+
+                current.append(
                     word
                 )
 
-                # -------------------------------------------------
-                # Normal maximum
-                # -------------------------------------------------
+        # -----------------------------------------------------
+        # Final group
+        # -----------------------------------------------------
 
-                if len(
-                    current_words
-                ) >= self.MAX_WORDS_PER_LINE:
+        if current:
 
-                    chunks.append(
-                        " ".join(
-                            current_words
-                        )
-                    )
+            groups.append(
+                current
+            )
 
-                    current_words = []
+        # -----------------------------------------------------
+        # Merge tiny final group
+        #
+        # Example:
+        #
+        # 1 2 3 4 5 6
+        # 7
+        #
+        # becomes:
+        #
+        # 1 2 3 4 5 6 7
+        # -----------------------------------------------------
+
+        groups = (
+            self._merge_small_groups(
+                groups
+            )
+        )
+
+        # -----------------------------------------------------
+        # Build final entries
+        # -----------------------------------------------------
+
+        entries = []
+
+        for index, group in enumerate(
+            groups,
+            start=1,
+        ):
+
+            if not group:
+
+                continue
+
+            start = float(
+                group[0]["start"]
+            )
+
+            end = float(
+                group[-1]["end"]
+            )
+
+            text = " ".join(
+                item["text"]
+                for item in group
+            ).strip()
+
+            if not text:
+
+                continue
 
             # -------------------------------------------------
-            # Remaining words
+            # Never allow invalid timestamps
             # -------------------------------------------------
 
-            if current_words:
+            start = max(
+                0.0,
+                min(
+                    start,
+                    audio_duration,
+                ),
+            )
 
-                remaining = (
-                    " ".join(
-                        current_words
-                    )
+            end = max(
+                start,
+                min(
+                    end,
+                    audio_duration,
+                ),
+            )
+
+            # -------------------------------------------------
+            # If actual word timing is extremely short,
+            # don't invent a long duration.
+            #
+            # Instead retain the actual speech timing.
+            # -------------------------------------------------
+
+            entries.append(
+                {
+                    "index":
+                        index,
+
+                    "start":
+                        start,
+
+                    "end":
+                        end,
+
+                    "text":
+                        text,
+                }
+            )
+
+        # -----------------------------------------------------
+        # Final boundary
+        #
+        # Don't leave the last subtitle ending before
+        # the end of the actual spoken audio if the
+        # last WordBoundary ends slightly early.
+        #
+        # A small tail is acceptable and makes the
+        # final subtitle remain visible through the
+        # end of the spoken sentence.
+        # -----------------------------------------------------
+
+        if entries:
+
+            last_end = (
+                entries[-1]["end"]
+            )
+
+            remaining = (
+                audio_duration
+                - last_end
+            )
+
+            if remaining > 0:
+                entries[-1]["end"] = (
+                    audio_duration
                 )
 
-                # If the previous chunk is very short,
-                # merge the remainder into it.
-                if (
-                    chunks
-                    and len(
-                        remaining.split()
-                    )
-                    < self.MIN_WORDS_PER_CHUNK
+        return entries
+
+    # =========================================================
+    # MERGE SMALL GROUPS
+    # =========================================================
+
+    def _merge_small_groups(
+        self,
+        groups,
+    ):
+
+        if len(groups) <= 1:
+
+            return groups
+
+        result = []
+
+        for group in groups:
+
+            if not result:
+
+                result.append(
+                    group
+                )
+
+                continue
+
+            word_count = len(
+                group
+            )
+
+            # -------------------------------------------------
+            # Small group
+            # -------------------------------------------------
+
+            if (
+                word_count
+                < self.MIN_WORDS_PER_CHUNK
+            ):
+
+                previous = result[-1]
+
+                combined_count = (
+                    len(previous)
+                    + word_count
+                )
+
+                # -------------------------------------------------
+                # Merge if still reasonably readable.
+                # -------------------------------------------------
+
+                if combined_count <= (
+                    self.MAX_WORDS_PER_LINE
+                    + 2
                 ):
 
-                    combined = (
-                        chunks[-1]
-                        + " "
-                        + remaining
+                    result[-1] = (
+                        previous
+                        + group
                     )
 
-                    if len(
-                        combined.split()
-                    ) <= (
-                        self.MAX_WORDS_PER_LINE
-                        + 2
-                    ):
+                    continue
 
-                        chunks[-1] = (
-                            combined
-                        )
+            result.append(
+                group
+            )
 
-                    else:
+        return result
 
-                        chunks.append(
-                            remaining
-                        )
+    # =========================================================
+    # SENTENCE END
+    # =========================================================
 
-                else:
+    def _ends_sentence(
+        self,
+        word: str,
+    ) -> bool:
 
-                    chunks.append(
-                        remaining
-                    )
+        if not word:
 
-        return chunks
+            return False
+
+        word = str(
+            word
+        ).strip()
+
+        return bool(
+            re.search(
+                r"[.!?।॥]$",
+                word,
+            )
+        )
 
     # =========================================================
     # AUDIO DURATION
@@ -695,6 +860,10 @@ class SubtitleGenerator:
         self,
         audio_file: Path,
     ) -> float:
+
+        audio_file = Path(
+            audio_file
+        )
 
         command = [
 
@@ -744,7 +913,7 @@ class SubtitleGenerator:
         if duration <= 0:
 
             raise Exception(
-                f"Audio has zero duration:\n"
+                f"Audio duration is zero:\n"
                 f"{audio_file}"
             )
 
@@ -759,6 +928,10 @@ class SubtitleGenerator:
         subtitle_file: Path,
         entries,
     ):
+
+        subtitle_file = Path(
+            subtitle_file
+        )
 
         with open(
             subtitle_file,
@@ -792,37 +965,45 @@ class SubtitleGenerator:
         seconds: float,
     ) -> str:
 
-        milliseconds = int(
+        seconds = max(
+            0.0,
+            float(seconds),
+        )
+
+        total_milliseconds = int(
             round(
                 seconds * 1000
             )
         )
 
         hours = (
-            milliseconds
+            total_milliseconds
             // 3_600_000
         )
 
-        milliseconds %= (
-            3_600_000
+        remainder = (
+            total_milliseconds
+            % 3_600_000
         )
 
         minutes = (
-            milliseconds
+            remainder
             // 60_000
         )
 
-        milliseconds %= (
-            60_000
+        remainder = (
+            remainder
+            % 60_000
         )
 
         secs = (
-            milliseconds
+            remainder
             // 1000
         )
 
-        milliseconds %= (
-            1000
+        milliseconds = (
+            remainder
+            % 1000
         )
 
         return (
