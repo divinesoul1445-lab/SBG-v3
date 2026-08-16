@@ -25,8 +25,17 @@ Generates:
     scene4/narration.json
 
 The JSON file contains Edge TTS word-boundary
-timestamps and is used by subtitles.py for
-real speech synchronization.
+timestamps and the ORIGINAL narration words.
+
+IMPORTANT:
+
+Edge TTS may return corrupted Unicode in
+WordBoundary["text"] for Devanagari.
+
+Therefore:
+
+    Edge TTS boundary text = timing only
+    Original narration text = subtitle text
 """
 
 import asyncio
@@ -73,6 +82,217 @@ class TTSGenerator:
         return ENGLISH_VOICE
 
     # ========================================================
+    # MOJIBAKE DETECTION
+    # ========================================================
+
+    def _looks_like_mojibake(
+        self,
+        text: str,
+    ) -> bool:
+        """
+        Detect common UTF-8 mojibake.
+
+        Examples:
+
+            à¤§à¥ƒ...
+            Ã©
+            Â
+            â€™
+            ï»¿
+        """
+
+        if not text:
+            return False
+
+        markers = (
+            "à¤",
+            "à¥",
+            "Ã",
+            "Â",
+            "â",
+            "ï»¿",
+        )
+
+        return any(
+            marker in text
+            for marker in markers
+        )
+
+    # ========================================================
+    # REPAIR MOJIBAKE
+    # ========================================================
+
+    def _repair_mojibake(
+        self,
+        text,
+    ):
+        """
+        Repair UTF-8 mojibake.
+
+        IMPORTANT:
+
+        Genuine Devanagari is returned unchanged.
+
+        Example:
+
+            धृतराष्ट्र
+
+        remains:
+
+            धृतराष्ट्र
+
+        while:
+
+            à¤§à¥ƒà¤¤à¤°
+
+        becomes:
+
+            धृतराष्ट्र
+        """
+
+        if text is None:
+            return text
+
+        text = str(text)
+
+        if not text:
+            return text
+
+        # ----------------------------------------------------
+        # NEVER TOUCH VALID DEVANAGARI
+        # ----------------------------------------------------
+
+        if any(
+            "\u0900" <= char <= "\u097F"
+            for char in text
+        ):
+            return text
+
+        # ----------------------------------------------------
+        # Nothing obviously corrupted
+        # ----------------------------------------------------
+
+        if not self._looks_like_mojibake(text):
+            return text
+
+        # ----------------------------------------------------
+        # Try CP1252 -> UTF-8
+        # ----------------------------------------------------
+
+        candidates = []
+
+        try:
+
+            candidates.append(
+                text
+                .encode("cp1252")
+                .decode("utf-8")
+            )
+
+        except (
+            UnicodeEncodeError,
+            UnicodeDecodeError,
+        ):
+            pass
+
+        # ----------------------------------------------------
+        # Try Latin-1 -> UTF-8
+        # ----------------------------------------------------
+
+        try:
+
+            candidates.append(
+                text
+                .encode("latin1")
+                .decode("utf-8")
+            )
+
+        except (
+            UnicodeEncodeError,
+            UnicodeDecodeError,
+        ):
+            pass
+
+        # ----------------------------------------------------
+        # Select candidate containing Devanagari
+        # ----------------------------------------------------
+
+        for candidate in candidates:
+
+            if any(
+                "\u0900" <= char <= "\u097F"
+                for char in candidate
+            ):
+
+                return candidate
+
+        # ----------------------------------------------------
+        # Nothing worked
+        # ----------------------------------------------------
+
+        return text
+
+    # ========================================================
+    # SOURCE WORDS
+    # ========================================================
+
+    def _get_source_words(
+        self,
+        text: str,
+    ):
+        """
+        Return authoritative narration words.
+
+        These words are taken directly from the original
+        narration and NOT from Edge TTS.
+
+        This is critical for Sanskrit / Devanagari.
+        """
+
+        if not text:
+            return []
+
+        return str(text).split()
+
+    # ========================================================
+    # PRINT TEXT DEBUG
+    # ========================================================
+
+    def _print_text_debug(
+        self,
+        scene_number: int,
+        text: str,
+    ):
+
+        print()
+        print("=" * 80)
+        print(
+            f"TTS INPUT DEBUG — SCENE {scene_number}"
+        )
+        print("=" * 80)
+
+        print()
+        print("TEXT:")
+        print(text)
+
+        print()
+        print("REPR:")
+        print(repr(text))
+
+        print()
+        print("CODEPOINTS:")
+
+        print(
+            [
+                hex(ord(char))
+                for char in text
+            ]
+        )
+
+        print("=" * 80)
+        print()
+
+    # ========================================================
     # GENERATE AUDIO + WORD TIMINGS
     # ========================================================
 
@@ -85,31 +305,99 @@ class TTSGenerator:
     ):
 
         if text is None:
+
             raise Exception(
                 "TTS received None text."
             )
 
-        text = str(text).strip()
+        text = str(
+            text
+        ).strip()
 
         if not text:
+
             raise Exception(
                 "TTS received empty text."
             )
+
+        # ----------------------------------------------------
+        # Repair only if necessary
+        # ----------------------------------------------------
+
+        original_text = text
+
+        repaired_text = (
+            self._repair_mojibake(
+                text
+            )
+        )
+
+        if repaired_text != original_text:
+
+            print()
+            print(
+                "⚠ Mojibake detected."
+            )
+
+            print(
+                "Before:",
+                repr(original_text),
+            )
+
+            print(
+                "After :",
+                repr(repaired_text),
+            )
+
+            print()
+
+            text = repaired_text
+
+        # ----------------------------------------------------
+        # Debug
+        # ----------------------------------------------------
 
         print()
         print("=" * 80)
         print("EDGE TTS DEBUG")
         print("=" * 80)
 
-        print("Voice :", voice)
-        print("Rate  :", RATE)
-        print("Volume:", VOLUME)
-        print("Text  :", repr(text))
-        print("Audio :", output_file)
-        print("Timing:", timing_file)
+        print(
+            "Voice :",
+            voice,
+        )
+
+        print(
+            "Rate  :",
+            RATE,
+        )
+
+        print(
+            "Volume:",
+            VOLUME,
+        )
+
+        print(
+            "Text  :",
+            repr(text),
+        )
+
+        print(
+            "Audio :",
+            output_file,
+        )
+
+        print(
+            "Timing:",
+            timing_file,
+        )
 
         print("=" * 80)
         print()
+
+        # ----------------------------------------------------
+        # Edge TTS
+        # ----------------------------------------------------
 
         communicate = edge_tts.Communicate(
             text=text,
@@ -119,18 +407,22 @@ class TTSGenerator:
             boundary="WordBoundary",
         )
 
+        # ----------------------------------------------------
+        # AUTHORITATIVE SOURCE WORDS
+        # ----------------------------------------------------
+
+        source_words = (
+            self._get_source_words(
+                text
+            )
+        )
+
+        source_word_index = 0
+
         word_boundaries = []
 
         # ----------------------------------------------------
-        # IMPORTANT
-        #
-        # We use stream() instead of save().
-        #
-        # This allows us to capture:
-        #
-        #     WordBoundary
-        #
-        # events while simultaneously writing the MP3.
+        # Write MP3 + capture boundaries
         # ----------------------------------------------------
 
         with open(
@@ -140,18 +432,18 @@ class TTSGenerator:
 
             async for chunk in communicate.stream():
 
-                chunk_type = chunk.get(
-                    "type"
+                chunk_type = (
+                    chunk.get("type")
                 )
 
-                # ------------------------------------------------
-                # AUDIO DATA
-                # ------------------------------------------------
+                # ============================================
+                # AUDIO
+                # ============================================
 
                 if chunk_type == "audio":
 
-                    data = chunk.get(
-                        "data"
+                    data = (
+                        chunk.get("data")
                     )
 
                     if data:
@@ -160,23 +452,40 @@ class TTSGenerator:
                             data
                         )
 
-                # ------------------------------------------------
+                # ============================================
                 # WORD BOUNDARY
-                # ------------------------------------------------
+                # ============================================
 
-                elif chunk_type == "WordBoundary":
+                elif (
+                    chunk_type
+                    == "WordBoundary"
+                ):
 
-                    offset = chunk.get(
-                        "offset"
+                    offset = (
+                        chunk.get(
+                            "offset"
+                        )
                     )
 
-                    duration = chunk.get(
-                        "duration"
+                    duration = (
+                        chunk.get(
+                            "duration"
+                        )
                     )
 
-                    boundary_text = chunk.get(
-                        "text"
-                    )
+                    # ------------------------------------------------
+                    # IMPORTANT
+                    #
+                    # DO NOT use:
+                    #
+                    #     chunk["text"]
+                    #
+                    # for subtitle text.
+                    #
+                    # Edge TTS can return mojibake here.
+                    #
+                    # We use it ONLY as a timing event.
+                    # ------------------------------------------------
 
                     if (
                         offset is None
@@ -185,10 +494,32 @@ class TTSGenerator:
 
                         continue
 
-                    # Edge TTS uses 100-nanosecond
-                    # units for offset/duration.
+                    # ------------------------------------------------
+                    # Match timing event to original narration word
+                    # ------------------------------------------------
+
+                    if (
+                        source_word_index
+                        < len(source_words)
+                    ):
+
+                        subtitle_word = (
+                            source_words[
+                                source_word_index
+                            ]
+                        )
+
+                        source_word_index += 1
+
+                    else:
+
+                        subtitle_word = ""
+
+                    # ------------------------------------------------
+                    # Edge TTS timestamps:
                     #
-                    # Convert to seconds.
+                    # 100 nanoseconds
+                    # ------------------------------------------------
 
                     start = (
                         float(offset)
@@ -208,11 +539,7 @@ class TTSGenerator:
                     word_boundaries.append(
                         {
                             "text":
-                                ""
-                                if boundary_text is None
-                                else str(
-                                    boundary_text
-                                ),
+                                subtitle_word,
 
                             "start":
                                 round(
@@ -235,19 +562,47 @@ class TTSGenerator:
                     )
 
         # ----------------------------------------------------
-        # Verify word timings
+        # Validate
         # ----------------------------------------------------
 
         if not word_boundaries:
 
             raise Exception(
                 "Edge TTS generated audio but "
-                "returned no WordBoundary events.\n"
-                "Cannot create synchronized subtitles."
+                "returned no WordBoundary events."
             )
 
         # ----------------------------------------------------
-        # Save timing JSON
+        # IMPORTANT VALIDATION
+        #
+        # If Edge returned fewer timing events than source
+        # words, do NOT silently pretend everything matched.
+        # ----------------------------------------------------
+
+        if (
+            len(word_boundaries)
+            != len(source_words)
+        ):
+
+            print()
+            print(
+                "⚠ WORD COUNT MISMATCH"
+            )
+
+            print(
+                "Source words :",
+                len(source_words),
+            )
+
+            print(
+                "TTS timings  :",
+                len(word_boundaries),
+            )
+
+            print()
+
+        # ----------------------------------------------------
+        # Save narration JSON
         # ----------------------------------------------------
 
         timing_data = {
@@ -272,6 +627,7 @@ class TTSGenerator:
             timing_file,
             "w",
             encoding="utf-8",
+            newline="\n",
         ) as f:
 
             json.dump(
@@ -312,11 +668,13 @@ class TTSGenerator:
             3,
             4,
         ):
+
             raise ValueError(
                 "scene_number must be between 1 and 4."
             )
 
         if text is None:
+
             raise Exception(
                 f"Scene {scene_number} narration is None."
             )
@@ -326,12 +684,30 @@ class TTSGenerator:
         ).strip()
 
         if not text:
+
             raise Exception(
                 f"Scene {scene_number} narration is empty."
             )
 
         # ----------------------------------------------------
-        # Output
+        # Repair before anything else
+        # ----------------------------------------------------
+
+        text = self._repair_mojibake(
+            text
+        )
+
+        # ----------------------------------------------------
+        # Debug original source
+        # ----------------------------------------------------
+
+        self._print_text_debug(
+            scene_number,
+            text,
+        )
+
+        # ----------------------------------------------------
+        # Output files
         # ----------------------------------------------------
 
         audio_file = (
@@ -353,16 +729,21 @@ class TTSGenerator:
         )
 
         # ----------------------------------------------------
-        # Reuse ONLY when BOTH files are valid
+        # ALWAYS regenerate Scene 2
         #
-        # This is important.
+        # Existing Scene 2 narration.json may contain
+        # corrupted Edge boundary text.
         #
-        # Existing MP3 files generated by the old TTS code
-        # do NOT have timing information.
+        # Therefore Scene 2 must not reuse old timing data.
         # ----------------------------------------------------
 
+        force_regenerate = (
+            scene_number == 2
+        )
+
         if (
-            audio_file.exists()
+            not force_regenerate
+            and audio_file.exists()
             and audio_file.stat().st_size > 0
             and timing_file.exists()
             and timing_file.stat().st_size > 0
@@ -384,7 +765,7 @@ class TTSGenerator:
             return audio_file
 
         # ----------------------------------------------------
-        # Remove incomplete old files
+        # Remove old files
         # ----------------------------------------------------
 
         if audio_file.exists():
@@ -426,14 +807,6 @@ class TTSGenerator:
             f"{scene_number} audio + timing..."
         )
 
-        print(
-            f"Scene {scene_number} text:"
-        )
-
-        print(
-            repr(text)
-        )
-
         asyncio.run(
             self._generate(
                 text=text,
@@ -444,7 +817,7 @@ class TTSGenerator:
         )
 
         # ----------------------------------------------------
-        # Verify audio
+        # Validate audio
         # ----------------------------------------------------
 
         if not audio_file.exists():
@@ -466,7 +839,7 @@ class TTSGenerator:
             )
 
         # ----------------------------------------------------
-        # Verify timing
+        # Validate timing
         # ----------------------------------------------------
 
         if not timing_file.exists():
@@ -627,16 +1000,11 @@ class TTSGenerator:
     ) -> Path:
 
         """
-        Legacy method.
+        Legacy compatibility method.
 
         Generates:
 
             teaching.mp3
-
-        This method is kept for compatibility with older
-        pipeline code.
-
-        Word timing is not required here.
         """
 
         output_folder = Path(
@@ -662,7 +1030,9 @@ class TTSGenerator:
 
         if audio_file.exists():
 
-            audio_file.unlink()
+            audio_file.unlink(
+                missing_ok=True
+            )
 
         if text is None:
 
@@ -681,14 +1051,13 @@ class TTSGenerator:
             )
 
         # ----------------------------------------------------
-        # Legacy generation
+        # Legacy TTS does not need word timing.
         # ----------------------------------------------------
 
         asyncio.run(
-            self._generate_audio_only(
+            self._generate_legacy(
                 text=text,
                 output_file=audio_file,
-                voice=ENGLISH_VOICE,
             )
         )
 
@@ -712,41 +1081,28 @@ class TTSGenerator:
         return audio_file
 
     # ========================================================
-    # LEGACY AUDIO-ONLY GENERATOR
+    # LEGACY GENERATION
     # ========================================================
 
-    async def _generate_audio_only(
+    async def _generate_legacy(
         self,
         text: str,
         output_file: Path,
-        voice: str,
     ):
 
-        communicate = edge_tts.Communicate(
-            text=text,
-            voice=voice,
-            rate=RATE,
-            volume=VOLUME,
-            boundary="WordBoundary",
+        text = self._repair_mojibake(
+            str(text).strip()
         )
 
-        with open(
-            output_file,
-            "wb",
-        ) as audio:
+        communicate = (
+            edge_tts.Communicate(
+                text=text,
+                voice=ENGLISH_VOICE,
+                rate=RATE,
+                volume=VOLUME,
+            )
+        )
 
-            async for chunk in communicate.stream():
-
-                if chunk.get(
-                    "type"
-                ) == "audio":
-
-                    data = chunk.get(
-                        "data"
-                    )
-
-                    if data:
-
-                        audio.write(
-                            data
-                        )
+        await communicate.save(
+            str(output_file)
+        )

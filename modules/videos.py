@@ -44,7 +44,6 @@ directories are used.
 
 from pathlib import Path
 import subprocess
-import tempfile
 
 from config import (
     FFMPEG_PATH,
@@ -55,6 +54,8 @@ from config import (
     VIDEO_HEIGHT,
     FPS,
 )
+
+TRANSITION_DURATION = 0.25
 
 from modules.logger import Logger
 
@@ -104,6 +105,71 @@ class VideoRenderer:
         self.ffprobe = str(
             FFPROBE_PATH
         )
+
+    # ==========================================================
+    # Supress useless STDOUT
+    # ==========================================================
+
+
+    def _run_ffmpeg(
+        self,
+        command,
+        description="FFmpeg",
+    ):
+        """
+        Run FFmpeg quietly.
+
+        Shows only:
+            - SBG application logs
+            - FFmpeg errors if the command fails
+
+        Suppresses:
+            - frame=
+            - fps=
+            - bitrate=
+            - speed=
+            - Qavg=
+            - libx264 encoding logs
+            - progress output
+        """
+
+        try:
+            result = subprocess.run(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+
+        except Exception as exc:
+            raise RuntimeError(
+                f"{description} could not be started:\n{exc}"
+            ) from exc
+
+        if result.returncode != 0:
+
+            print()
+            print("=" * 70)
+            print(f"FFMPEG ERROR — {description}")
+            print("=" * 70)
+
+            if result.stderr:
+                print(result.stderr.strip())
+
+            print("=" * 70)
+            print()
+
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                command,
+                stderr=result.stderr,
+            )
+
+        return result
+
 
     # ==========================================================
     # AUDIO DURATION
@@ -164,6 +230,77 @@ class VideoRenderer:
             raise Exception(
                 f"Audio has zero duration:\n"
                 f"{audio_file}"
+            )
+
+        return duration
+
+    # ==========================================================
+    # VIDEO DURATION
+    # ==========================================================
+
+    def _video_duration(
+        self,
+        video_file: Path,
+    ) -> float:
+        """
+        Return the exact duration of a video file in seconds.
+        """
+
+        video_file = Path(
+            video_file
+        )
+
+        video_file = self._check_file(
+            video_file,
+            "Video file",
+        )
+
+        command = [
+
+            self.ffprobe,
+
+            "-v",
+            "error",
+
+            "-show_entries",
+            "format=duration",
+
+            "-of",
+            "default="
+            "noprint_wrappers=1:"
+            "nokey=1",
+
+            str(video_file),
+        ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        value = (
+            result.stdout
+            .strip()
+        )
+
+        if not value:
+
+            raise Exception(
+                f"Could not determine video duration:\n"
+                f"{video_file}"
+            )
+
+        duration = float(
+            value
+        )
+
+        if duration <= 0:
+
+            raise Exception(
+                f"Video has zero duration:\n"
+                f"{video_file}"
             )
 
         return duration
@@ -730,7 +867,9 @@ class VideoRenderer:
         command = [
 
             self.ffmpeg,
-
+            "-hide_banner",
+            "-loglevel",
+            "error",
             "-y",
 
             # Image
@@ -798,9 +937,14 @@ class VideoRenderer:
             f"{output_file}"
         )
 
-        subprocess.run(
+        # subprocess.run(
+        #     command,
+        #     check=True,
+        # )
+
+        self._run_ffmpeg(
             command,
-            check=True,
+            description=f"Rendering Scene {Path(output_file).parent.name}",
         )
 
         # ------------------------------------------------------
@@ -833,19 +977,32 @@ class VideoRenderer:
     # MERGE SCENE VIDEOS
     # ==========================================================
 
+        # ==========================================================
+    # MERGE SCENE VIDEOS
+    # ==========================================================
+
     def merge_scenes(
         self,
         scene_videos,
         output_folder,
-    ):
+        ):
         """
-        Concatenate independent scene videos.
+        Merge 4 scene videos using smooth visual crossfades.
 
-        Background music is added ONLY here.
+        Visual:
+            Scene 1 ──crossfade──> Scene 2 ──crossfade──> ...
+
+        Audio:
+            Scene 1 narration -> Scene 2 narration -> ...
+
+        Background music is added only after the scene audio
+        has been combined.
+
+        This avoids the brief black frame produced by
+        fade-to-black transitions.
         """
 
         if not scene_videos:
-
             raise Exception(
                 "No scene videos supplied."
             )
@@ -874,17 +1031,15 @@ class VideoRenderer:
             / "final_video.mp4"
         )
 
-        # ------------------------------------------------------
-        # Validate
-        # ------------------------------------------------------
+        # ======================================================
+        # VALIDATE
+        # ======================================================
 
         scene_videos = [
-
             self._check_file(
                 video,
                 f"Scene video {index}",
             )
-
             for index, video
             in enumerate(
                 scene_videos,
@@ -893,48 +1048,269 @@ class VideoRenderer:
         ]
 
         if len(scene_videos) != 4:
-
             raise ValueError(
                 "merge_scenes expects exactly "
                 "4 scene videos."
             )
 
-        # ------------------------------------------------------
-        # Concat list
-        # ------------------------------------------------------
+        # ======================================================
+        # GET VIDEO DURATIONS
+        # ======================================================
 
-        concat_file = (
-            final_folder
-            / "scenes.txt"
-        )
+        def get_video_duration(
+            video_file,
+        ):
+            command = [
 
-        with open(
-            concat_file,
-            "w",
-            encoding="utf-8",
-        ) as f:
+                self.ffprobe,
 
-            for video in scene_videos:
+                "-v",
+                "error",
 
-                video_path = (
-                    video
-                    .resolve()
-                    .as_posix()
+                "-show_entries",
+                "format=duration",
+
+                "-of",
+                "default="
+                "noprint_wrappers=1:"
+                "nokey=1",
+
+                str(video_file),
+            ]
+
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            value = (
+                result.stdout
+                .strip()
+            )
+
+            if not value:
+                raise Exception(
+                    "Could not determine video duration:\n"
+                    f"{video_file}"
                 )
 
-                video_path = (
-                    video_path.replace(
-                        "'",
-                        "'\\''",
-                    )
+            duration = float(
+                value
+            )
+
+            if duration <= 0:
+                raise Exception(
+                    "Video has zero duration:\n"
+                    f"{video_file}"
                 )
 
-                f.write(
-                    f"file '{video_path}'\n"
-                )
+            return duration
+
+        durations = [
+            get_video_duration(
+                video
+            )
+            for video in scene_videos
+        ]
 
         # ======================================================
-        # STEP 1 — CONCATENATE
+        # TRANSITION
+        # ======================================================
+
+        transition = float(
+            TRANSITION_DURATION
+        )
+
+        if transition <= 0:
+            transition = 0.01
+
+        # Never allow transition to consume an entire scene.
+        shortest_scene = min(
+            durations
+        )
+
+        transition = min(
+            transition,
+            shortest_scene / 2.0,
+        )
+
+        Logger.info(
+            "Scene transition duration: "
+            f"{transition:.2f}s"
+        )
+
+        # ======================================================
+        # PRINT DURATIONS
+        # ======================================================
+
+        print()
+        print(
+            "Scene video durations:"
+        )
+
+        for index, duration in enumerate(
+            durations,
+            start=1,
+        ):
+
+            print(
+                f"  Scene {index}: "
+                f"{duration:.3f} sec"
+            )
+
+        print()
+
+        # ======================================================
+        # BUILD INPUTS
+        # ======================================================
+
+        command = [
+
+            self.ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+
+            "-y",
+        ]
+
+        for video in scene_videos:
+
+            command.extend(
+                [
+                    "-i",
+                    str(video),
+                ]
+            )
+
+        # ======================================================
+        # VIDEO CROSSFADE FILTER
+        # ======================================================
+        #
+        # Example:
+        #
+        # [0:v][1:v] xfade -> [v01]
+        # [v01][2:v] xfade -> [v012]
+        # [v012][3:v] xfade -> [vout]
+        #
+        # The offset is based on the cumulative duration
+        # minus the transitions already applied.
+        # ======================================================
+
+        filter_parts = []
+
+        # First transition
+        cumulative_duration = (
+            durations[0]
+        )
+
+        filter_parts.append(
+            (
+                f"[0:v][1:v]"
+                f"xfade="
+                f"transition=fade:"
+                f"duration={transition:.3f}:"
+                f"offset={cumulative_duration - transition:.3f}"
+                f"[v01]"
+            )
+        )
+
+        cumulative_duration = (
+            cumulative_duration
+            + durations[1]
+            - transition
+        )
+
+        # Second transition
+        filter_parts.append(
+            (
+                f"[v01][2:v]"
+                f"xfade="
+                f"transition=fade:"
+                f"duration={transition:.3f}:"
+                f"offset={cumulative_duration - transition:.3f}"
+                f"[v012]"
+            )
+        )
+
+        cumulative_duration = (
+            cumulative_duration
+            + durations[2]
+            - transition
+        )
+
+        # Third transition
+        filter_parts.append(
+            (
+                f"[v012][3:v]"
+                f"xfade="
+                f"transition=fade:"
+                f"duration={transition:.3f}:"
+                f"offset={cumulative_duration - transition:.3f}"
+                f"[vout]"
+            )
+        )
+
+        # ======================================================
+        # AUDIO CROSSFADE
+        # ======================================================
+        #
+        # Narrations remain in scene order.
+        #
+        # There is a very short audio crossfade at each
+        # scene boundary so the transition doesn't feel abrupt.
+        #
+        # This does NOT add background music yet.
+        # ======================================================
+
+        audio_transition = min(
+            transition,
+            0.15,
+        )
+
+        filter_parts.append(
+            (
+                f"[0:a][1:a]"
+                f"acrossfade="
+                f"d={audio_transition:.3f}:"
+                f"c1=tri:"
+                f"c2=tri"
+                f"[a01]"
+            )
+        )
+
+        filter_parts.append(
+            (
+                f"[a01][2:a]"
+                f"acrossfade="
+                f"d={audio_transition:.3f}:"
+                f"c1=tri:"
+                f"c2=tri"
+                f"[a012]"
+            )
+        )
+
+        filter_parts.append(
+            (
+                f"[a012][3:a]"
+                f"acrossfade="
+                f"d={audio_transition:.3f}:"
+                f"c1=tri:"
+                f"c2=tri"
+                f"[aout]"
+            )
+        )
+
+        filter_complex = (
+            ";".join(
+                filter_parts
+            )
+        )
+
+        # ======================================================
+        # INTERMEDIATE OUTPUT
         # ======================================================
 
         merged_video = (
@@ -942,23 +1318,47 @@ class VideoRenderer:
             / "merged_video.mp4"
         )
 
-        concat_command = [
+        # ======================================================
+        # CROSSFADE COMMAND
+        # ======================================================
 
-            self.ffmpeg,
+        merge_command = [
 
-            "-y",
+            *command,
 
-            "-f",
-            "concat",
+            "-filter_complex",
+            filter_complex,
 
-            "-safe",
-            "0",
+            # Final video
+            "-map",
+            "[vout]",
 
-            "-i",
-            str(concat_file),
+            # Sequential narration
+            "-map",
+            "[aout]",
 
-            "-c",
-            "copy",
+            # Video encoding
+            "-c:v",
+            "libx264",
+
+            "-preset",
+            "medium",
+
+            "-crf",
+            "18",
+
+            "-pix_fmt",
+            "yuv420p",
+
+            # Audio
+            "-c:a",
+            "aac",
+
+            "-b:a",
+            "192k",
+
+            "-ar",
+            "48000",
 
             "-movflags",
             "+faststart",
@@ -967,32 +1367,48 @@ class VideoRenderer:
         ]
 
         self._print_command(
-            concat_command
+            merge_command
         )
 
         Logger.info(
-            "Merging scene videos..."
+            "Merging scene videos with smooth "
+            "crossfade transitions..."
         )
 
-        subprocess.run(
-            concat_command,
-            check=True,
+        # subprocess.run(
+        #     merge_command,
+        #     check=True,
+        # )
+
+        self._run_ffmpeg(
+            merge_command,
+            description="Merging scene videos",
         )
+
+        # ======================================================
+        # VERIFY MERGED VIDEO
+        # ======================================================
 
         if not merged_video.exists():
 
             raise Exception(
-                "Merged video was not created."
+                "Merged video was not created:\n"
+                f"{merged_video}"
             )
 
         if merged_video.stat().st_size <= 0:
 
             raise Exception(
-                "Merged video is empty."
+                "Merged video is empty:\n"
+                f"{merged_video}"
             )
 
+        Logger.success(
+            "Scene videos merged successfully."
+        )
+
         # ======================================================
-        # STEP 2 — BACKGROUND MUSIC
+        # BACKGROUND MUSIC
         # ======================================================
 
         music_file = Path(
@@ -1000,11 +1416,8 @@ class VideoRenderer:
         )
 
         music_exists = (
-
             music_file.exists()
-
             and music_file.stat().st_size > 0
-
         )
 
         if music_exists:
@@ -1020,10 +1433,13 @@ class VideoRenderer:
             music_command = [
 
                 self.ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
 
                 "-y",
 
-                # Narration video
+                # Narration + video
                 "-i",
                 str(merged_video),
 
@@ -1034,7 +1450,10 @@ class VideoRenderer:
                 "-i",
                 str(music_file),
 
-                # Audio mix
+                # --------------------------------------------------
+                # Mix narration + music
+                # --------------------------------------------------
+
                 "-filter_complex",
 
                 (
@@ -1058,9 +1477,11 @@ class VideoRenderer:
                 "-map",
                 "[aout]",
 
+                # Keep already encoded video
                 "-c:v",
                 "copy",
 
+                # Encode final audio
                 "-c:a",
                 "aac",
 
@@ -1080,9 +1501,14 @@ class VideoRenderer:
                 music_command
             )
 
-            subprocess.run(
+            # subprocess.run(
+            #     music_command,
+            #     check=True,
+            # )
+
+            self._run_ffmpeg(
                 music_command,
-                check=True,
+                description="Adding background music",
             )
 
         else:
@@ -1091,30 +1517,53 @@ class VideoRenderer:
                 "Background music not found."
             )
 
-            # No music: use concatenated video as final.
+            # No music.
+            #
+            # Move merged video to final output.
+            if output_file.exists():
+                output_file.unlink()
+
             merged_video.replace(
                 output_file
             )
 
-        # ------------------------------------------------------
-        # Verify final
-        # ------------------------------------------------------
+        # ======================================================
+        # VERIFY FINAL VIDEO
+        # ======================================================
 
         if not output_file.exists():
 
             raise Exception(
-                "Final video was not created."
+                "Final video was not created:\n"
+                f"{output_file}"
             )
 
         if output_file.stat().st_size <= 0:
 
             raise Exception(
-                "Final video is empty."
+                "Final video is empty:\n"
+                f"{output_file}"
             )
+
+        # ======================================================
+        # CLEANUP INTERMEDIATE MERGED VIDEO
+        # ======================================================
+
+        if merged_video.exists():
+
+            try:
+                merged_video.unlink()
+            except OSError:
+                pass
 
         Logger.success(
             f"Final video saved -> "
             f"{output_file}"
+        )
+
+        Logger.success(
+            "Scene transitions -> "
+            f"SMOOTH CROSSFADE ({transition:.2f}s)"
         )
 
         Logger.success(

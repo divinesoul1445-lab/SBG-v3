@@ -781,6 +781,20 @@ class Pipeline:
                 )
             )
 
+            print()
+            print("=" * 80)
+            print(f"TTS INPUT DEBUG — SCENE {index}")
+            print("=" * 80)
+            print("TEXT:")
+            print(narration)
+            print()
+            print("REPR:")
+            print(repr(narration))
+            print()
+            print("CODEPOINTS:")
+            print([hex(ord(c)) for c in str(narration)[:30]])
+            print("=" * 80)
+
             audio_file = self._run_step(
                 f"Generating Scene {index} narration...",
                 self.tts.generate_scene,
