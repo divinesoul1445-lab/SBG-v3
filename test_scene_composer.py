@@ -89,17 +89,11 @@ composer = SceneComposer()
 # =========================================================
 
 results = composer.compose_scenes(
-
     scene_images=scene_images,
-
     output_folder=OUTPUT_FOLDER,
-
     shloka=SHLOKA,
-
     chapter=1,
-
     verse=1,
-
 )
 
 # =========================================================

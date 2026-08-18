@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -10,22 +11,20 @@ from typing import Optional
 
 class VideoRenderer:
     """
-    SBG V3 Scene Video Renderer
+    SBG V3 - Scene Video Renderer
 
-    Architecture:
+    Scene 2 test version.
 
-        Fixed Image
-             +
-        Scene Narration Audio
-             +
-        Scene Subtitles
-             +
-        Optional Shloka Karaoke Overlay
-             ↓
-        Independent Scene Video
+    Inputs:
+        PNG/JPG/WEBP scene image
+        Scene narration audio
+        Scene subtitles
+        Optional Shloka karaoke overlay
 
-    Background music is intentionally NOT added here.
-    It should only be added during the final render.
+    Output:
+        output/videos/scene_video.mp4
+
+    Background music is NOT added here.
     """
 
     def __init__(
@@ -35,6 +34,7 @@ class VideoRenderer:
         height: int = 1920,
         fps: int = 30,
     ):
+
         self.width = width
         self.height = height
         self.fps = fps
@@ -46,41 +46,26 @@ class VideoRenderer:
         )
 
     # ============================================================
-    # FFmpeg
+    # FIND FFMPEG
     # ============================================================
 
     @staticmethod
     def _find_ffmpeg() -> str:
 
-        possible_paths = [
-            os.path.join(
-                "tools",
-                "ffmpeg",
-                "bin",
-                "ffmpeg.exe",
-            ),
-
-            os.path.join(
-                "tools",
-                "ffmpeg",
-                "ffmpeg.exe",
-            ),
-
+        project_ffmpeg = os.path.join(
+            "tools",
             "ffmpeg",
-        ]
+            "bin",
+            "ffmpeg.exe",
+        )
 
-        for path in possible_paths:
-
-            if path == "ffmpeg":
-                return path
-
-            if os.path.exists(path):
-                return path
+        if os.path.exists(project_ffmpeg):
+            return project_ffmpeg
 
         return "ffmpeg"
 
     # ============================================================
-    # Utilities
+    # CHECK FILE
     # ============================================================
 
     @staticmethod
@@ -92,25 +77,67 @@ class VideoRenderer:
         if not path:
             return
 
-        if not os.path.exists(path):
+        if not os.path.isfile(path):
+
             raise FileNotFoundError(
-                f"{description} not found:\n{path}"
+                f"\n{description} not found:\n"
+                f"{path}\n"
             )
+
+    # ============================================================
+    # CHECK IMAGE
+    # ============================================================
+
+    @staticmethod
+    def _check_image(
+        image_file: str,
+    ):
+
+        extension = (
+            Path(image_file)
+            .suffix
+            .lower()
+        )
+
+        supported = {
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+        }
+
+        if extension not in supported:
+
+            raise ValueError(
+                "\nUnsupported image format: "
+                f"{extension}\n"
+                "Supported formats: "
+                ".png, .jpg, .jpeg, .webp"
+            )
+
+    # ============================================================
+    # RUN FFMPEG
+    # ============================================================
 
     @staticmethod
     def _run(
         command: list[str],
     ):
 
-        print("\n[VideoRenderer]")
-        print("Running FFmpeg:")
+        print("\n" + "=" * 70)
+        print("[VideoRenderer] FFmpeg command")
+        print("=" * 70)
 
         print(
             " ".join(
-                f'"{x}"' if " " in x else x
-                for x in command
+                f'"{item}"'
+                if " " in item
+                else item
+                for item in command
             )
         )
+
+        print("=" * 70)
 
         result = subprocess.run(
             command,
@@ -121,33 +148,33 @@ class VideoRenderer:
 
         if result.returncode != 0:
 
-            print("\nFFmpeg ERROR:\n")
+            print("\nFFMPEG ERROR\n")
             print(result.stderr)
 
             raise RuntimeError(
-                "FFmpeg video rendering failed."
+                "FFmpeg rendering failed."
             )
 
         return result
 
     # ============================================================
-    # Get audio duration
+    # GET AUDIO DURATION
     # ============================================================
 
     def get_duration(
         self,
-        file_path: str,
+        audio_file: str,
     ) -> float:
 
         self._check_file(
-            file_path,
+            audio_file,
             "Audio file",
         )
 
         command = [
             self.ffmpeg,
             "-i",
-            file_path,
+            audio_file,
         ]
 
         result = subprocess.run(
@@ -157,32 +184,41 @@ class VideoRenderer:
             text=True,
         )
 
-        stderr = result.stderr
-
-        import re
-
         match = re.search(
-            r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)",
-            stderr,
+            r"Duration:\s*"
+            r"(\d+):(\d+):(\d+(?:\.\d+)?)",
+            result.stderr,
         )
 
         if not match:
+
             raise RuntimeError(
-                f"Could not determine duration:\n{file_path}"
+                "Could not determine audio duration:\n"
+                f"{audio_file}"
             )
 
-        hours = int(match.group(1))
-        minutes = int(match.group(2))
-        seconds = float(match.group(3))
+        hours = int(
+            match.group(1)
+        )
 
-        return (
+        minutes = int(
+            match.group(2)
+        )
+
+        seconds = float(
+            match.group(3)
+        )
+
+        duration = (
             hours * 3600
             + minutes * 60
             + seconds
         )
 
+        return duration
+
     # ============================================================
-    # Prepare subtitle filter
+    # SUBTITLE FILTER
     # ============================================================
 
     def _subtitle_filter(
@@ -197,15 +233,24 @@ class VideoRenderer:
             subtitle_file
         )
 
-        # FFmpeg Windows paths need escaping
-        subtitle_path = subtitle_file.replace(
-            "\\",
-            "/",
+        if not os.path.isfile(
+            subtitle_file
+        ):
+            raise FileNotFoundError(
+                f"Subtitle file not found:\n"
+                f"{subtitle_file}"
+            )
+
+        # Convert Windows path for FFmpeg
+        subtitle_path = (
+            subtitle_file
+            .replace("\\", "/")
         )
 
-        subtitle_path = subtitle_path.replace(
-            ":",
-            "\\:",
+        # Escape colon in drive letter
+        subtitle_path = (
+            subtitle_path
+            .replace(":", r"\:")
         )
 
         return (
@@ -223,22 +268,22 @@ class VideoRenderer:
         )
 
     # ============================================================
-    # Create basic scene video
+    # RENDER SCENE 2
     # ============================================================
 
-    def render_scene(
+    def render_scene_2(
         self,
         image_file: str,
         audio_file: str,
-        output_file: str,
         subtitle_file: Optional[str] = None,
         shloka_overlay: Optional[str] = None,
-        duration: Optional[float] = None,
-        ) -> str:
+        output_file: str = "output/videos/scene_video.mp4",
+    ) -> str:
 
-        print("\n" + "=" * 60)
-        print("[VideoRenderer] Rendering SBG V3 scene")
-        print("=" * 60)
+        print("\n")
+        print("=" * 70)
+        print("SBG V3 - SCENE 2 VIDEO")
+        print("=" * 70)
 
         # --------------------------------------------------------
         # Validate image
@@ -246,33 +291,16 @@ class VideoRenderer:
 
         self._check_file(
             image_file,
-            "Scene image",
+            "Scene 2 image",
         )
 
-        image_ext = Path(image_file).suffix.lower()
-
-        supported_images = {
-            ".png",
-            ".jpg",
-            ".jpeg",
-            ".webp",
-        }
-
-        if image_ext not in supported_images:
-
-            raise ValueError(
-                f"Unsupported image format: {image_ext}\n"
-                f"Supported formats: "
-                f"{', '.join(sorted(supported_images))}"
-            )
-
-        print(
-            f"[VideoRenderer] Image: {image_file}"
+        self._check_image(
+            image_file
         )
 
         print(
-            f"[VideoRenderer] Image format: "
-            f"{image_ext}"
+            f"[VideoRenderer] Scene 2 image:"
+            f"\n{image_file}"
         )
 
         # --------------------------------------------------------
@@ -281,44 +309,61 @@ class VideoRenderer:
 
         self._check_file(
             audio_file,
-            "Scene audio",
+            "Scene 2 narration audio",
         )
-
-        # --------------------------------------------------------
-        # Optional subtitle
-        # --------------------------------------------------------
-
-        self._check_file(
-            subtitle_file,
-            "Subtitle file",
-        )
-
-        # --------------------------------------------------------
-        # Optional Shloka overlay
-        # --------------------------------------------------------
-
-        self._check_file(
-            shloka_overlay,
-            "Shloka overlay",
-        )
-
-        # --------------------------------------------------------
-        # Duration
-        # --------------------------------------------------------
-
-        if duration is None:
-
-            duration = self.get_duration(
-                audio_file
-            )
 
         print(
-            f"[VideoRenderer] Duration: "
-            f"{duration:.2f}s"
+            f"[VideoRenderer] Scene 2 audio:"
+            f"\n{audio_file}"
         )
 
         # --------------------------------------------------------
-        # Output directory
+        # Validate subtitles
+        # --------------------------------------------------------
+
+        if subtitle_file:
+
+            self._check_file(
+                subtitle_file,
+                "Scene 2 subtitle",
+            )
+
+            print(
+                f"[VideoRenderer] Scene 2 subtitles:"
+                f"\n{subtitle_file}"
+            )
+
+        # --------------------------------------------------------
+        # Validate Shloka overlay
+        # --------------------------------------------------------
+
+        if shloka_overlay:
+
+            self._check_file(
+                shloka_overlay,
+                "Scene 2 Shloka overlay",
+            )
+
+            print(
+                f"[VideoRenderer] Scene 2 Shloka:"
+                f"\n{shloka_overlay}"
+            )
+
+        # --------------------------------------------------------
+        # Get narration duration
+        # --------------------------------------------------------
+
+        duration = self.get_duration(
+            audio_file
+        )
+
+        print(
+            f"[VideoRenderer] Audio duration:"
+            f" {duration:.3f}s"
+        )
+
+        # --------------------------------------------------------
+        # Output
         # --------------------------------------------------------
 
         output_path = Path(
@@ -331,47 +376,55 @@ class VideoRenderer:
         )
 
         # --------------------------------------------------------
-        # FFmpeg inputs
+        # INPUTS
+        #
+        # Input 0 = PNG image
+        # Input 1 = narration audio
+        # Input 2 = Shloka overlay
         # --------------------------------------------------------
 
         command = [
             self.ffmpeg,
             "-y",
 
-            # Fixed image
+            # Scene 2 PNG
             "-loop",
             "1",
+
+            "-framerate",
+            str(self.fps),
 
             "-i",
             image_file,
 
-            # Narration
+            # Scene 2 narration
             "-i",
             audio_file,
         ]
 
-        # --------------------------------------------------------
-        # Shloka overlay
-        # --------------------------------------------------------
-
-        has_overlay = bool(
-            shloka_overlay
+        has_shloka = (
+            shloka_overlay is not None
         )
 
-        if has_overlay:
+        if has_shloka:
 
             command.extend(
                 [
+                    # Shloka WebM
                     "-i",
                     shloka_overlay,
                 ]
             )
 
         # --------------------------------------------------------
-        # Filters
+        # FILTER GRAPH
         # --------------------------------------------------------
 
         filters = []
+
+        # ========================================================
+        # BASE IMAGE
+        # ========================================================
 
         filters.append(
             "[0:v]"
@@ -382,70 +435,82 @@ class VideoRenderer:
             "[base]"
         )
 
-        current_video = "[base]"
+        current = "[base]"
 
-        # --------------------------------------------------------
-        # Shloka overlay
-        # --------------------------------------------------------
+        # ========================================================
+        # SHLOKA OVERLAY
+        # ========================================================
 
-        if has_overlay:
+        if has_shloka:
 
             filters.append(
                 "[2:v]"
                 f"scale={self.width}:{self.height}:"
-                "force_original_aspect_ratio=disable"
+                "force_original_aspect_ratio=disable,"
+                "format=rgba"
                 "[shloka]"
             )
 
             filters.append(
-                f"{current_video}"
+                f"{current}"
                 "[shloka]"
-                "overlay=0:0:format=auto"
+                "overlay=0:0:"
+                "format=auto"
                 "[with_shloka]"
             )
 
-            current_video = "[with_shloka]"
+            current = "[with_shloka]"
 
-        # --------------------------------------------------------
-        # Subtitles
-        # --------------------------------------------------------
+        # ========================================================
+        # SUBTITLES
+        # ========================================================
 
-        subtitle_filter = self._subtitle_filter(
-            subtitle_file
+        subtitle_filter = (
+            self._subtitle_filter(
+                subtitle_file
+            )
         )
 
         if subtitle_filter:
 
             filters.append(
-                f"{current_video}"
+                f"{current}"
                 f"{subtitle_filter}"
-                "[finalvideo]"
+                "[final]"
             )
 
-            current_video = "[finalvideo]"
+            current = "[final]"
 
-        # --------------------------------------------------------
-        # FFmpeg filter graph
-        # --------------------------------------------------------
+        # ========================================================
+        # FILTER COMPLEX
+        # ========================================================
 
         filter_complex = ";".join(
             filters
         )
+
+        # ========================================================
+        # OUTPUT
+        # ========================================================
 
         command.extend(
             [
                 "-filter_complex",
                 filter_complex,
 
+                # Video
                 "-map",
-                current_video,
+                current,
 
+                # Narration audio
                 "-map",
                 "1:a",
 
+                # Exact narration duration
                 "-t",
                 str(duration),
 
+                # H.264
                 "-c:v",
                 "libx264",
 
@@ -461,6 +526,7 @@ class VideoRenderer:
                 "-r",
                 str(self.fps),
 
+                # AAC narration
                 "-c:a",
                 "aac",
 
@@ -470,105 +536,52 @@ class VideoRenderer:
                 "-ar",
                 "48000",
 
+                # Avoid extending beyond narration
                 "-shortest",
 
                 output_file,
             ]
         )
 
+        # --------------------------------------------------------
+        # RUN
+        # --------------------------------------------------------
+
         self._run(
             command
         )
 
+        print("\n")
+        print("=" * 70)
+        print("SCENE 2 VIDEO CREATED")
+        print("=" * 70)
         print(
-            f"\n[VideoRenderer] Scene created:"
-            f"\n{output_file}"
+            f"Output:\n{output_file}"
         )
+        print("=" * 70)
 
         return output_file
 
-    # ============================================================
-    # Scene without subtitles / overlay
-    # ============================================================
 
-    def render_basic_scene(
-        self,
-        image_file: str,
-        audio_file: str,
-        output_file: str,
-        duration: Optional[float] = None,
-    ) -> str:
+# ============================================================
+# CONVENIENCE FUNCTION
+# ============================================================
 
-        return self.render_scene(
-            image_file=image_file,
-            audio_file=audio_file,
-            output_file=output_file,
-            subtitle_file=None,
-            shloka_overlay=None,
-            duration=duration,
-        )
-
-    # ============================================================
-    # Scene with Shloka karaoke
-    # ============================================================
-
-    def render_shloka_scene(
-        self,
-        image_file: str,
-        audio_file: str,
-        shloka_overlay: str,
-        output_file: str,
-        subtitle_file: Optional[str] = None,
-        duration: Optional[float] = None,
-    ) -> str:
-
-        return self.render_scene(
-            image_file=image_file,
-            audio_file=audio_file,
-            output_file=output_file,
-            subtitle_file=subtitle_file,
-            shloka_overlay=shloka_overlay,
-            duration=duration,
-        )
-
-
-# ================================================================
-# Convenience function
-# ================================================================
-
-def render_scene_video(
+def render_scene_2(
     image_file: str,
     audio_file: str,
-    output_file: str,
     subtitle_file: Optional[str] = None,
     shloka_overlay: Optional[str] = None,
-    duration: Optional[float] = None,
 ) -> str:
 
     renderer = VideoRenderer()
 
-    return renderer.render_scene(
+    return renderer.render_scene_2(
         image_file=image_file,
         audio_file=audio_file,
-        output_file=output_file,
         subtitle_file=subtitle_file,
         shloka_overlay=shloka_overlay,
-        duration=duration,
-    )
-
-
-# ================================================================
-# Test
-# ================================================================
-
-if __name__ == "__main__":
-
-    renderer = VideoRenderer()
-
-    renderer.render_scene(
-        image_file="assets/images/test.jpg",
-        audio_file="output/audio/test.mp3",
-        subtitle_file="output/subtitles/test.srt",
-        shloka_overlay="output/shloka_overlay.webm",
-        output_file="output/videos/test_scene.mp4",
+        output_file=(
+            "output/videos/scene_video.mp4"
+        ),
     )
