@@ -9,7 +9,7 @@ Architecture:
 
 Excel
     ↓
-Approved Scene 1–4 Narrations
+Approved Scene 1 to 4 Narrations
     ↓
 Fixed Scene Images
     ↓
@@ -462,7 +462,7 @@ class Pipeline:
                     chapter=chapter,
                     verse=verse,
                     scene_number=index,
-                    show_shloka=True,
+                    show_shloka=False,
                 )
             )
 

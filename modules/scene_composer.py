@@ -254,505 +254,342 @@ class SceneComposer:
     def _draw_shloka_panel(
         self,
         image,
-        shloka,
+        shloka: str,
     ):
         """
-        Premium Sanskrit Shloka panel.
+        Draw the Sanskrit shloka in a readable cinematic panel.
 
-        Uses the existing RAQM-enabled Devanagari renderer.
+        The panel is positioned directly below the header/divider
+        area so Scene 1 has a clear visual hierarchy:
+
+            श्रीमद्भगवद्गीता
+            अध्याय X • श्लोक Y
+                    ───
+            [ SHLOKA PANEL ]
+                    ...
+            ॥ हरिः ॐ ॥
+
+        Uses the project's Noto Serif Devanagari font.
         """
+
+        if image is None:
+            return None
+
+        shloka = (
+            ""
+            if shloka is None
+            else str(shloka).strip()
+        )
+
+        if not shloka:
+            return image
+
+        # =====================================================
+        # FONT
+        # =====================================================
+
+        font_file = Path(
+            r"C:\SBG\SBG-v3\assets\fonts\NotoSerifDevanagari-Regular.ttf"
+        )
+
+        if not font_file.exists():
+            raise FileNotFoundError(
+                "Devanagari font not found:\n"
+                f"{font_file}"
+            )
+
+        font_size = 43
+
+        font = ImageFont.truetype(
+            str(font_file),
+            font_size,
+        )
+
+        # =====================================================
+        # DRAW OBJECT
+        # =====================================================
 
         draw = ImageDraw.Draw(
             image,
             "RGBA",
         )
 
-        # ==================================================
+        # =====================================================
         # PANEL GEOMETRY
-        # ==================================================
+        #
+        # IMPORTANT:
+        # Start below the existing decorative divider.
+        # =====================================================
 
-        panel_margin_x = int(
-            self.WIDTH * 0.11
+        panel_width = int(
+            self.WIDTH * 0.88
         )
 
-        panel_width = (
-            self.WIDTH
-            - (panel_margin_x * 2)
-        )
+        panel_x = (
+            self.WIDTH - panel_width
+        ) // 2
 
+        # Move panel upward.
+        #
+        # For 1080x1920 this starts around y=650,
+        # leaving the header area clean.
         panel_top = int(
             self.HEIGHT * 0.55
         )
 
-        panel_bottom = int(
-            self.HEIGHT * 0.70
+        # Initial panel height.
+        panel_height = int(
+            self.HEIGHT * 0.24
         )
 
-        radius = 32
-
-        # ==================================================
-        # COLORS
-        # ==================================================
-
-        panel_fill = (
-            20,
-            14,
-            8,
-            225,
+        panel_bottom = (
+            panel_top
+            + panel_height
         )
 
-        outer_gold = (
-            214,
-            174,
-            82,
-            245,
+        # =====================================================
+        # WRAP SHLOKA
+        # =====================================================
+
+        words = shloka.split()
+
+        lines = []
+        current_line = ""
+
+        max_text_width = (
+            panel_width - 90
         )
 
-        bright_gold = (
-            244,
-            211,
-            126,
-            255,
-        )
+        for word in words:
 
-        inner_gold = (
-            166,
-            123,
-            48,
-            180,
-        )
-
-        shadow = (
-            0,
-            0,
-            0,
-            130,
-        )
-
-        # ==================================================
-        # SOFT PANEL SHADOW
-        # ==================================================
-
-        shadow_offset = 8
-
-        draw.rounded_rectangle(
-            (
-                panel_margin_x + shadow_offset,
-                panel_top + shadow_offset,
-                panel_margin_x
-                + panel_width
-                + shadow_offset,
-                panel_bottom + shadow_offset,
-            ),
-            radius=radius,
-            fill=shadow,
-        )
-
-        # ==================================================
-        # MAIN PANEL
-        # ==================================================
-
-        draw.rounded_rectangle(
-            (
-                panel_margin_x,
-                panel_top,
-                panel_margin_x + panel_width,
-                panel_bottom,
-            ),
-            radius=radius,
-            fill=panel_fill,
-            outline=outer_gold,
-            width=4,
-        )
-
-        # ==================================================
-        # INNER BORDER
-        # ==================================================
-
-        inner_padding = 10
-
-        draw.rounded_rectangle(
-            (
-                panel_margin_x + inner_padding,
-                panel_top + inner_padding,
-                panel_margin_x
-                + panel_width
-                - inner_padding,
-                panel_bottom - inner_padding,
-            ),
-            radius=radius - inner_padding,
-            outline=inner_gold,
-            width=2,
-        )
-
-        # ==================================================
-        # TOP DECORATIVE LINE
-        # ==================================================
-
-        center_x = self.WIDTH // 2
-
-        ornament_y = panel_top + 32
-
-        line_width = 115
-
-        draw.line(
-            (
-                center_x - line_width,
-                ornament_y,
-                center_x - 22,
-                ornament_y,
-            ),
-            fill=inner_gold,
-            width=2,
-        )
-
-        draw.line(
-            (
-                center_x + 22,
-                ornament_y,
-                center_x + line_width,
-                ornament_y,
-            ),
-            fill=inner_gold,
-            width=2,
-        )
-
-        # ==================================================
-        # CENTER DIAMOND
-        # ==================================================
-
-        diamond_size = 9
-
-        draw.polygon(
-            [
-                (
-                    center_x,
-                    ornament_y - diamond_size,
-                ),
-                (
-                    center_x + diamond_size,
-                    ornament_y,
-                ),
-                (
-                    center_x,
-                    ornament_y + diamond_size,
-                ),
-                (
-                    center_x - diamond_size,
-                    ornament_y,
-                ),
-            ],
-            fill=bright_gold,
-        )
-
-        # ==================================================
-        # SHLOKA HEADING
-        # ==================================================
-
-        heading_font = self._font(
-            38,
-            bold=True,
-        )
-
-        heading_y = (
-            panel_top + 48
-        )
-
-        self._draw_centered_devanagari(
-            draw,
-            "श्लोक",
-            heading_font,
-            heading_y,
-            bright_gold,
-            shadow=True,
-        )
-
-        # ==================================================
-        # SHLOKA TEXT
-        # ==================================================
-
-        shloka_font = self._font(
-            34,
-            bold=False,
-        )
-
-        # --------------------------------------------------
-        # Normalize input
-        # --------------------------------------------------
-
-        if shloka is None:
-            return
-
-        shloka = str(
-            shloka
-        ).strip()
-
-        if not shloka:
-            return
-
-        # --------------------------------------------------
-        # Split into lines
-        # --------------------------------------------------
-
-        lines = [
-            line.strip()
-            for line in shloka.splitlines()
-            if line.strip()
-        ]
-
-        # If the source is one long line, wrap it.
-        if len(lines) == 1:
-
-            words = lines[0].split()
-
-            wrapped = []
-
-            current = ""
-
-            max_chars = 42
-
-            for word in words:
-
-                test = (
-                    word
-                    if not current
-                    else current + " " + word
+            if not current_line:
+                test_line = word
+            else:
+                test_line = (
+                    current_line
+                    + " "
+                    + word
                 )
-
-                if len(test) <= max_chars:
-
-                    current = test
-
-                else:
-
-                    if current:
-                        wrapped.append(
-                            current
-                        )
-
-                    current = word
-
-            if current:
-                wrapped.append(
-                    current
-                )
-
-            lines = wrapped
-
-        # ==================================================
-        # TEXT AREA
-        # ==================================================
-
-        text_area_top = (
-            panel_top + 105
-        )
-
-        text_area_bottom = (
-            panel_bottom - 38
-        )
-
-        available_height = (
-            text_area_bottom
-            - text_area_top
-        )
-
-        # ==================================================
-        # LINE SPACING
-        # ==================================================
-
-        line_spacing = 12
-
-        bbox = draw.textbbox(
-            (0, 0),
-            "अ",
-            font=shloka_font,
-            anchor="lt",
-            direction="ltr",
-            language="hi",
-        )
-
-        line_height = (
-            bbox[3] - bbox[1]
-        )
-
-        total_height = (
-            len(lines) * line_height
-            + (len(lines) - 1)
-            * line_spacing
-        )
-
-        # ==================================================
-        # AUTO-SCALE IF NEEDED
-        # ==================================================
-
-        if total_height > available_height:
-
-            shloka_font = self._font(
-                29,
-                bold=False,
-            )
 
             bbox = draw.textbbox(
                 (0, 0),
-                "अ",
-                font=shloka_font,
-                anchor="lt",
-                direction="ltr",
-                language="hi",
+                test_line,
+                font=font,
             )
 
-            line_height = (
-                bbox[3] - bbox[1]
+            text_width = (
+                bbox[2] - bbox[0]
             )
 
-            total_height = (
-                len(lines) * line_height
-                + (len(lines) - 1)
-                * line_spacing
+            if text_width <= max_text_width:
+
+                current_line = test_line
+
+            else:
+
+                if current_line:
+                    lines.append(
+                        current_line
+                    )
+
+                current_line = word
+
+        if current_line:
+            lines.append(
+                current_line
             )
 
-        # ==================================================
-        # CENTER TEXT BLOCK VERTICALLY
-        # ==================================================
+        # =====================================================
+        # LINE SPACING
+        # =====================================================
 
-        start_y = (
-            text_area_top
-            + (
-                available_height
-                - total_height
-            ) // 2
-        )
+        line_spacing = 18
 
-        # ==================================================
-        # DRAW EACH LINE
-        # ==================================================
+        line_heights = []
 
         for line in lines:
 
             bbox = draw.textbbox(
                 (0, 0),
                 line,
-                font=shloka_font,
-                anchor="lt",
-                direction="ltr",
-                language="hi",
+                font=font,
             )
 
-            line_width = (
+            line_heights.append(
+                bbox[3] - bbox[1]
+            )
+
+        text_height = (
+            sum(line_heights)
+            + (
+                line_spacing
+                * max(
+                    0,
+                    len(lines) - 1,
+                )
+            )
+        )
+
+        # =====================================================
+        # PANEL HEIGHT
+        # =====================================================
+
+        required_height = (
+            text_height + 70
+        )
+
+        if required_height > panel_height:
+
+            panel_height = (
+                required_height
+            )
+
+            panel_bottom = (
+                panel_top
+                + panel_height
+            )
+
+        # =====================================================
+        # PANEL BACKGROUND
+        # =====================================================
+
+        draw.rounded_rectangle(
+            (
+                panel_x,
+                panel_top,
+                panel_x + panel_width,
+                panel_bottom,
+            ),
+            radius=32,
+            fill=(
+                15,
+                8,
+                3,
+                165,
+            ),
+            outline=(
+                245,
+                211,
+                130,
+                150,
+            ),
+            width=2,
+        )
+
+        # =====================================================
+        # INNER BORDER
+        # =====================================================
+
+        inset = 10
+
+        draw.rounded_rectangle(
+            (
+                panel_x + inset,
+                panel_top + inset,
+                panel_x
+                + panel_width
+                - inset,
+                panel_bottom
+                - inset,
+            ),
+            radius=26,
+            outline=(
+                245,
+                211,
+                130,
+                55,
+            ),
+            width=1,
+        )
+
+        # =====================================================
+        # TEXT POSITION
+        # =====================================================
+
+        current_y = (
+            panel_top
+            + (
+                panel_height
+                - text_height
+            )
+            // 2
+        )
+
+        # =====================================================
+        # DRAW SHLOKA
+        # =====================================================
+
+        for index, line in enumerate(
+            lines
+        ):
+
+            bbox = draw.textbbox(
+                (0, 0),
+                line,
+                font=font,
+            )
+
+            text_width = (
                 bbox[2] - bbox[0]
             )
 
             x = (
                 self.WIDTH
-                - line_width
+                - text_width
             ) // 2
 
-            # ----------------------------------------------
+            # -------------------------------------------------
             # Shadow
-            # ----------------------------------------------
+            # -------------------------------------------------
 
             draw.text(
                 (
                     x + 2,
-                    start_y + 3,
+                    current_y + 3,
                 ),
                 line,
-                font=shloka_font,
+                font=font,
                 fill=(
                     0,
                     0,
                     0,
-                    210,
+                    190,
                 ),
-                anchor="lt",
-                direction="ltr",
-                language="hi",
             )
 
-            # ----------------------------------------------
-            # Sanskrit
-            # ----------------------------------------------
+            # -------------------------------------------------
+            # Main text
+            # -------------------------------------------------
 
             draw.text(
                 (
                     x,
-                    start_y,
+                    current_y,
                 ),
                 line,
-                font=shloka_font,
+                font=font,
                 fill=(
-                    248,
-                    240,
-                    218,
+                    255,
+                    238,
+                    190,
                     255,
                 ),
-                anchor="lt",
-                direction="ltr",
-                language="hi",
+                stroke_width=1,
+                stroke_fill=(
+                    45,
+                    20,
+                    5,
+                    220,
+                ),
             )
 
-            start_y += (
-                line_height
+            current_y += (
+                line_heights[index]
                 + line_spacing
             )
 
-        # ==================================================
-        # BOTTOM ORNAMENT
-        # ==================================================
-
-        ornament_y = (
-            panel_bottom - 24
-        )
-
-        line_width = 85
-
-        draw.line(
-            (
-                center_x - line_width,
-                ornament_y,
-                center_x - 16,
-                ornament_y,
-            ),
-            fill=inner_gold,
-            width=2,
-        )
-
-        draw.line(
-            (
-                center_x + 16,
-                ornament_y,
-                center_x + line_width,
-                ornament_y,
-            ),
-            fill=inner_gold,
-            width=2,
-        )
-
-        diamond_size = 6
-
-        draw.polygon(
-            [
-                (
-                    center_x,
-                    ornament_y - diamond_size,
-                ),
-                (
-                    center_x + diamond_size,
-                    ornament_y,
-                ),
-                (
-                    center_x,
-                    ornament_y + diamond_size,
-                ),
-                (
-                    center_x - diamond_size,
-                    ornament_y,
-                ),
-            ],
-            fill=bright_gold,
-        )
         return image
-
+    
     # =========================================================
     # ORNAMENT HELPER
     # =========================================================
@@ -1807,23 +1644,40 @@ class SceneComposer:
         chapter: int,
         verse: int,
         scene_number: int,
-        show_shloka: bool = True,
+        show_shloka: bool | None = None,
     ) -> Path:
+        """
+        Compose one scene image.
 
-        image_file = Path(
-            image_file
-        )
+        SBG V3 layout:
 
-        output_file = Path(
-            output_file
-        )
+            Scene 1
+                - Brand
+                - Chapter / Verse
+                - Decorative divider
+                - Full Shloka panel
+                - Bottom devotional mark
+
+            Scenes 2-4
+                - Brand
+                - Chapter / Verse
+                - Decorative divider
+                - NO shloka panel
+                - Bottom devotional mark
+
+        If show_shloka is not explicitly supplied:
+            Scene 1 -> shloka shown
+            Scene 2-4 -> shloka hidden
+        """
+
+        image_file = Path(image_file)
+        output_file = Path(output_file)
 
         # -----------------------------------------------------
         # Validate image
         # -----------------------------------------------------
 
         if not image_file.exists():
-
             raise FileNotFoundError(
                 f"Scene image not found:\n"
                 f"{image_file}"
@@ -1838,6 +1692,15 @@ class SceneComposer:
             if shloka is None
             else str(shloka).strip()
         )
+
+        # -----------------------------------------------------
+        # Automatically determine shloka visibility
+        # -----------------------------------------------------
+
+        if show_shloka is None:
+            show_shloka = (
+                scene_number == 1
+            )
 
         # -----------------------------------------------------
         # Output folder
@@ -1873,15 +1736,11 @@ class SceneComposer:
             image
         )
 
-        # =====================================================
-        # DRAW
-        # =====================================================
-
         if image is None:
             raise ValueError(
-                f"Scene {scene_number}: image is None before drawing."
+                f"Scene {scene_number}: "
+                f"image is None before drawing."
             )
-
 
         draw = ImageDraw.Draw(
             image
@@ -1892,8 +1751,8 @@ class SceneComposer:
         # =====================================================
 
         brand_font = self._font(
-        58,
-        bold=True,
+            58,
+            bold=True,
         )
 
         self._draw_centered_devanagari(
@@ -1902,7 +1761,7 @@ class SceneComposer:
             brand_font,
             self.BRAND_Y,
             self.LIGHT_GOLD,
-        )      
+        )
 
         # =====================================================
         # CHAPTER / VERSE
@@ -1915,68 +1774,51 @@ class SceneComposer:
 
         self._draw_centered_devanagari(
             draw,
-           f"अध्याय {chapter}  •  श्लोक {verse}",
+            f"अध्याय {chapter}  •  श्लोक {verse}",
             chapter_font,
             self.CHAPTER_Y,
             self.LIGHT_GOLD,
         )
 
-        footer_font = self._font(
-            36,
-            bold=True,
-        )
         # =====================================================
-        # DECORATIVE LINE
+        # DECORATIVE DIVIDER
         # =====================================================
-
-        line_width = 230
-
-        line_x1 = (
-            self.WIDTH
-            - line_width
-        ) // 2
-
-        line_x2 = (
-            line_x1
-            + line_width
-        )
 
         self._draw_decorative_divider(
             draw,
             center_x=self.WIDTH // 2,
             y=self.DECORATIVE_LINE_Y + 20,
             width=400,
-            )
-        
+        )
 
         # =====================================================
         # SHLOKA
+        #
+        # IMPORTANT:
+        # Only Scene 1 gets the full shloka panel by default.
         # =====================================================
+
+        show_shloka = scene_number in (1, 2)
 
         if show_shloka and shloka:
 
-            image = (
-                self._draw_shloka_panel(
-                    image,
-                    shloka,
-                )
+            image = self._draw_shloka_panel(
+                image,
+                shloka,
             )
 
             if image is None:
                 raise ValueError(
-                    f"Scene {scene_number}: image is None before drawing."
+                    f"Scene {scene_number}: "
+                    f"image is None after shloka panel."
                 )
 
             draw = ImageDraw.Draw(
                 image
             )
 
-
-
         # =====================================================
         # BOTTOM DEVOTIONAL MARK
-        #
-        # Positioned ABOVE the subtitle safe zone.
         # =====================================================
 
         bottom_font = self._font(
@@ -1986,22 +1828,17 @@ class SceneComposer:
         bottom_text = "॥ हरिः ॐ ॥"
 
         bbox = draw.textbbox(
-            (
-                0,
-                0,
-            ),
+            (0, 0),
             bottom_text,
             font=bottom_font,
         )
 
         bottom_width = (
-            bbox[2]
-            - bbox[0]
+            bbox[2] - bbox[0]
         )
 
         bottom_x = (
-            self.WIDTH
-            - bottom_width
+            self.WIDTH - bottom_width
         ) // 2
 
         draw.text(
@@ -2040,7 +1877,7 @@ class SceneComposer:
         )
 
         print(
-            f"✓ Composed scene image:"
+            "✓ Composed scene image:"
         )
 
         print(

@@ -474,191 +474,608 @@ class SubtitleGenerator:
         audio_duration,
         narration_text,
     ):
+        """
+        Build subtitle groups using:
 
-        if not words:
+            Edge WordBoundary timings -> timing only
+            narration_text             -> authoritative text
 
-            return []
+        This is important for Sanskrit / Devanagari because the
+        WordBoundary text can be mojibake even when the original
+        narration text is correct.
 
-        # -----------------------------------------------------
-        # Clean / normalize boundaries
-        # -----------------------------------------------------
+        Punctuation such as । and ॥ is kept attached to the
+        preceding word and never starts a new subtitle.
+        """
 
-        cleaned = []
+        # =========================================================
+        # CLEAN SOURCE TEXT
+        # =========================================================
 
-        for item in words:
+        if narration_text is None:
 
-            start = float(
-                item["start"]
+            raise Exception(
+                "Narration text is None while creating subtitles."
             )
 
-            end = float(
-                item["end"]
+        narration_text = str(
+            narration_text
+        ).strip()
+
+        if not narration_text:
+
+            raise Exception(
+                "Narration text is empty while creating subtitles."
             )
 
-            if start >= audio_duration:
+        # ---------------------------------------------------------
+        # Normalise whitespace
+        # ---------------------------------------------------------
 
-                continue
+        narration_text = re.sub(
+            r"\s+",
+            " ",
+            narration_text,
+        ).strip()
 
-            end = min(
-                end,
-                audio_duration,
-            )
-
-            if end <= start:
-
-                continue
-
-            cleaned.append(
-                {
-                    "text":
-                        item["text"],
-
-                    "start":
-                        start,
-
-                    "end":
-                        end,
-                }
-            )
-
-        if not cleaned:
-
-            return []
-
-        # -----------------------------------------------------
-        # Group actual spoken words
-        # -----------------------------------------------------
-
-        groups = []
-
-        current = []
-
-        for word in cleaned:
-
-            if not current:
-
-                current.append(
-                    word
-                )
-
-                continue
-
-            previous = (
-                current[-1]
-            )
-
-            gap = (
-                word["start"]
-                - previous["end"]
-            )
-
-            current_text = " ".join(
-                item["text"]
-                for item in current
-            )
-
-            # -------------------------------------------------
-            # Natural punctuation
-            # -------------------------------------------------
-
-            punctuation_boundary = (
-                self._ends_sentence(
-                    previous["text"]
-                )
-            )
-
-            # -------------------------------------------------
-            # Maximum words
-            # -------------------------------------------------
-
-            max_words_reached = (
-                len(current)
-                >= self.MAX_WORDS_PER_LINE
-            )
-
-            # -------------------------------------------------
-            # Large pause
-            # -------------------------------------------------
-
-            large_gap = (
-                gap
-                >= self.WORD_GAP_THRESHOLD
-            )
-
-            # -------------------------------------------------
-            # Decide whether to start a new subtitle
-            # -------------------------------------------------
-
-            should_split = False
-
-            if max_words_reached:
-
-                should_split = True
-
-            elif (
-                punctuation_boundary
-                and len(current)
-                >= self.MIN_WORDS_PER_CHUNK
-            ):
-
-                should_split = True
-
-            elif (
-                large_gap
-                and len(current)
-                >= self.MIN_WORDS_PER_CHUNK
-            ):
-
-                should_split = True
-
-            if should_split:
-
-                groups.append(
-                    current
-                )
-
-                current = [
-                    word
-                ]
-
-            else:
-
-                current.append(
-                    word
-                )
-
-        # -----------------------------------------------------
-        # Final group
-        # -----------------------------------------------------
-
-        if current:
-
-            groups.append(
-                current
-            )
-
-        # -----------------------------------------------------
-        # Merge tiny final group
+        # =========================================================
+        # SOURCE TOKENS
+        # =========================================================
+        #
+        # Keep punctuation attached to the preceding word.
         #
         # Example:
         #
-        # 1 2 3 4 5 6
-        # 7
+        # धृतराष्ट्र उवाच ।
         #
         # becomes:
         #
-        # 1 2 3 4 5 6 7
-        # -----------------------------------------------------
+        # ["धृतराष्ट्र", "उवाच", "।"]
+        #
+        # and later "।" is attached to "उवाच".
+        # =========================================================
 
-        groups = (
-            self._merge_small_groups(
-                groups
-            )
+        source_tokens = (
+            narration_text.split()
         )
 
-        # -----------------------------------------------------
-        # Build final entries
-        # -----------------------------------------------------
+        if not source_tokens:
+
+            return []
+
+        # =========================================================
+        # NORMALISE EDGE WORDS
+        # =========================================================
+
+        edge_words = []
+
+        for word in words:
+
+            if not isinstance(
+                word,
+                dict,
+            ):
+                continue
+
+            text = word.get(
+                "text",
+                "",
+            )
+
+            if text is None:
+                text = ""
+
+            text = str(
+                text
+            ).strip()
+
+            if not text:
+                continue
+
+            try:
+
+                start = float(
+                    word.get(
+                        "start",
+                        0,
+                    )
+                )
+
+                end = float(
+                    word.get(
+                        "end",
+                        0,
+                    )
+                )
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+
+                continue
+
+            if end <= start:
+                continue
+
+            edge_words.append(
+                {
+                    "text": text,
+                    "start": start,
+                    "end": end,
+                }
+            )
+
+        if not edge_words:
+
+            raise Exception(
+                "No valid Edge TTS word timings available."
+            )
+
+        # =========================================================
+        # REMOVE PUNCTUATION-ONLY EDGE EVENTS
+        # =========================================================
+        #
+        # Edge can return punctuation as its own timing event.
+        #
+        # We DO NOT use its text for subtitles.
+        #
+        # Its timing is nevertheless useful: punctuation belongs
+        # to the preceding source word.
+        # =========================================================
+
+        punctuation_tokens = {
+            "।",
+            "॥",
+            ".",
+            ",",
+            "?",
+            "!",
+            ";",
+            ":",
+        }
+
+        edge_content_words = []
+        edge_punctuation = []
+
+        for item in edge_words:
+
+            cleaned = item["text"].strip()
+
+            if cleaned in punctuation_tokens:
+
+                edge_punctuation.append(
+                    item
+                )
+
+            else:
+
+                edge_content_words.append(
+                    item
+                )
+
+        # =========================================================
+        # SOURCE WORDS WITHOUT PUNCTUATION
+        # =========================================================
+
+        source_word_items = []
+
+        for token in source_tokens:
+
+            # -----------------------------------------------------
+            # Separate punctuation from source token only when
+            # punctuation is actually attached.
+            #
+            # Example:
+            #
+            # युयुत्सवः ।
+            #
+            # remains two tokens.
+            # -----------------------------------------------------
+
+            if token in punctuation_tokens:
+
+                continue
+
+            source_word_items.append(
+                token
+            )
+
+        # =========================================================
+        # SAFETY CHECK
+        # =========================================================
+
+        if not source_word_items:
+
+            return []
+
+        # =========================================================
+        # MAP SOURCE WORDS -> EDGE TIMINGS
+        # =========================================================
+        #
+        # We deliberately DO NOT require textual equality here.
+        #
+        # Edge may return mojibake:
+        #
+        # à¤§à¥ƒ...
+        #
+        # while source is:
+        #
+        # धृतराष्ट्र
+        #
+        # We only need the timing sequence.
+        # =========================================================
+
+        timing_count = len(
+            edge_content_words
+        )
+
+        source_count = len(
+            source_word_items
+        )
+
+        # ---------------------------------------------------------
+        # If counts match, this is the ideal case.
+        # ---------------------------------------------------------
+
+        if timing_count == source_count:
+
+            mapped_words = []
+
+            for index, source_word in enumerate(
+                source_word_items
+            ):
+
+                timing = (
+                    edge_content_words[index]
+                )
+
+                mapped_words.append(
+                    {
+                        "text": source_word,
+                        "start": timing["start"],
+                        "end": timing["end"],
+                    }
+                )
+
+        else:
+
+            # -----------------------------------------------------
+            # Edge sometimes includes/excludes tokens differently.
+            #
+            # Use proportional mapping as a fallback.
+            #
+            # IMPORTANT:
+            # The actual displayed text STILL comes from the
+            # clean source.
+            # -----------------------------------------------------
+
+            mapped_words = []
+
+            if source_count == 1:
+
+                mapped_words.append(
+                    {
+                        "text": source_word_items[0],
+                        "start": edge_content_words[0]["start"],
+                        "end": edge_content_words[-1]["end"],
+                    }
+                )
+
+            else:
+
+                for index, source_word in enumerate(
+                    source_word_items
+                ):
+
+                    source_position = (
+                        index
+                        / max(
+                            source_count - 1,
+                            1,
+                        )
+                    )
+
+                    edge_position = round(
+                        source_position
+                        * (
+                            timing_count - 1
+                        )
+                    )
+
+                    edge_position = max(
+                        0,
+                        min(
+                            edge_position,
+                            timing_count - 1,
+                        ),
+                    )
+
+                    timing = (
+                        edge_content_words[
+                            edge_position
+                        ]
+                    )
+
+                    # -------------------------------------------------
+                    # Estimate the end from the next mapped position.
+                    # -------------------------------------------------
+
+                    if index < source_count - 1:
+
+                        next_source_position = (
+                            (index + 1)
+                            / max(
+                                source_count - 1,
+                                1,
+                            )
+                        )
+
+                        next_edge_position = round(
+                            next_source_position
+                            * (
+                                timing_count - 1
+                            )
+                        )
+
+                        next_edge_position = max(
+                            edge_position,
+                            min(
+                                next_edge_position,
+                                timing_count - 1,
+                            ),
+                        )
+
+                        next_timing = (
+                            edge_content_words[
+                                next_edge_position
+                            ]
+                        )
+
+                        end = next_timing[
+                            "start"
+                        ]
+
+                    else:
+
+                        end = timing[
+                            "end"
+                        ]
+
+                    if end <= timing["start"]:
+
+                        end = timing[
+                            "end"
+                        ]
+
+                    mapped_words.append(
+                        {
+                            "text": source_word,
+                            "start": timing["start"],
+                            "end": end,
+                        }
+                    )
+
+        # =========================================================
+        # ATTACH SOURCE PUNCTUATION
+        # =========================================================
+        #
+        # We now rebuild the source exactly.
+        #
+        # Example:
+        #
+        # source:
+        #
+        # धृतराष्ट्र उवाच । धर्मक्षेत्रे ...
+        #
+        # mapped words:
+        #
+        # धृतराष्ट्र
+        # उवाच
+        # धर्मक्षेत्रे
+        #
+        # becomes:
+        #
+        # धृतराष्ट्र
+        # उवाच ।
+        # धर्मक्षेत्रे
+        #
+        # The punctuation gets the END time of the preceding word.
+        # =========================================================
+
+        source_with_punctuation = []
+
+        word_index = 0
+
+        for token in source_tokens:
+
+            if token in punctuation_tokens:
+
+                if source_with_punctuation:
+
+                    previous = (
+                        source_with_punctuation[-1]
+                    )
+
+                    previous["text"] = (
+                        previous["text"]
+                        + " "
+                        + token
+                    )
+
+                continue
+
+            if word_index >= len(
+                mapped_words
+            ):
+
+                break
+
+            source_with_punctuation.append(
+                {
+                    "text":
+                        mapped_words[
+                            word_index
+                        ]["text"],
+
+                    "start":
+                        mapped_words[
+                            word_index
+                        ]["start"],
+
+                    "end":
+                        mapped_words[
+                            word_index
+                        ]["end"],
+                }
+            )
+
+            word_index += 1
+
+        if not source_with_punctuation:
+
+            return []
+
+        # =========================================================
+        # CREATE SUBTITLE GROUPS
+        # =========================================================
+
+        groups = []
+
+        current_words = []
+        current_start = None
+        current_end = None
+
+        for item in source_with_punctuation:
+
+            text = item["text"]
+            start = item["start"]
+            end = item["end"]
+
+            if current_start is None:
+
+                current_start = start
+
+            current_words.append(
+                text
+            )
+
+            current_end = end
+
+            # -----------------------------------------------------
+            # Sentence-ending punctuation
+            # -----------------------------------------------------
+
+            sentence_end = (
+                text.endswith("।")
+                or text.endswith("॥")
+                or text.endswith(".")
+                or text.endswith("?")
+                or text.endswith("!")
+            )
+
+            # -----------------------------------------------------
+            # Gap to next word
+            # -----------------------------------------------------
+
+            next_index = (
+                len(current_words)
+            )
+
+            global_index = (
+                source_with_punctuation.index(
+                    item
+                )
+            )
+
+            if (
+                global_index
+                < len(source_with_punctuation) - 1
+            ):
+
+                next_item = (
+                    source_with_punctuation[
+                        global_index + 1
+                    ]
+                )
+
+                gap = (
+                    next_item["start"]
+                    - end
+                )
+
+            else:
+
+                gap = 0
+
+            # -----------------------------------------------------
+            # Maximum words
+            # -----------------------------------------------------
+
+            too_many_words = (
+                len(current_words)
+                >= self.MAX_WORDS_PER_LINE
+            )
+
+            # -----------------------------------------------------
+            # Close subtitle
+            # -----------------------------------------------------
+
+            should_close = (
+
+                sentence_end
+
+                or too_many_words
+
+                or (
+                    gap
+                    > self.WORD_GAP_THRESHOLD
+                    and len(current_words)
+                    >= self.MIN_WORDS_PER_CHUNK
+                )
+            )
+
+            if should_close:
+
+                groups.append(
+                    {
+                        "words":
+                            current_words.copy(),
+
+                        "start":
+                            current_start,
+
+                        "end":
+                            current_end,
+                    }
+                )
+
+                current_words = []
+                current_start = None
+                current_end = None
+
+        # =========================================================
+        # REMAINING WORDS
+        # =========================================================
+
+        if current_words:
+
+            groups.append(
+                {
+                    "words":
+                        current_words.copy(),
+
+                    "start":
+                        current_start,
+
+                    "end":
+                        current_end,
+                }
+            )
+
+        # =========================================================
+        # FINAL NORMALISATION
+        # =========================================================
 
         entries = []
 
@@ -667,36 +1084,23 @@ class SubtitleGenerator:
             start=1,
         ):
 
-            if not group:
-
-                continue
-
             start = float(
-                group[0]["start"]
+                group["start"]
             )
 
             end = float(
-                group[-1]["end"]
+                group["end"]
             )
 
-            text = " ".join(
-                item["text"]
-                for item in group
-            ).strip()
-
-            if not text:
-
-                continue
-
-            # -------------------------------------------------
-            # Never allow invalid timestamps
-            # -------------------------------------------------
+            # -----------------------------------------------------
+            # Clamp to actual audio duration
+            # -----------------------------------------------------
 
             start = max(
                 0.0,
                 min(
                     start,
-                    audio_duration,
+                    float(audio_duration),
                 ),
             )
 
@@ -704,16 +1108,34 @@ class SubtitleGenerator:
                 start,
                 min(
                     end,
-                    audio_duration,
+                    float(audio_duration),
                 ),
             )
 
-            # -------------------------------------------------
-            # If actual word timing is extremely short,
-            # don't invent a long duration.
+            # -----------------------------------------------------
+            # Ensure minimum visible duration
             #
-            # Instead retain the actual speech timing.
-            # -------------------------------------------------
+            # Do not move the start.
+            # Only extend the end when possible.
+            # -----------------------------------------------------
+
+            if (
+                end - start
+                < self.MIN_SUBTITLE_DURATION
+            ):
+
+                end = min(
+                    float(audio_duration),
+                    start
+                    + self.MIN_SUBTITLE_DURATION,
+                )
+
+            text = " ".join(
+                group["words"]
+            ).strip()
+
+            if not text:
+                continue
 
             entries.append(
                 {
@@ -721,46 +1143,25 @@ class SubtitleGenerator:
                         index,
 
                     "start":
-                        start,
+                        round(
+                            start,
+                            4,
+                        ),
 
                     "end":
-                        end,
+                        round(
+                            end,
+                            4,
+                        ),
 
                     "text":
                         text,
                 }
             )
 
-        # -----------------------------------------------------
-        # Final boundary
-        #
-        # Don't leave the last subtitle ending before
-        # the end of the actual spoken audio if the
-        # last WordBoundary ends slightly early.
-        #
-        # A small tail is acceptable and makes the
-        # final subtitle remain visible through the
-        # end of the spoken sentence.
-        # -----------------------------------------------------
-
-        if entries:
-
-            last_end = (
-                entries[-1]["end"]
-            )
-
-            remaining = (
-                audio_duration
-                - last_end
-            )
-
-            if remaining > 0:
-                entries[-1]["end"] = (
-                    audio_duration
-                )
-
         return entries
-
+    
+    
     # =========================================================
     # MERGE SMALL GROUPS
     # =========================================================
