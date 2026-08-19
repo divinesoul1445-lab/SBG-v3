@@ -70,7 +70,7 @@ class ShlokaHighlighter:
         line_spacing: int = 20,
         word_spacing: int = 28,
         max_line_width: int = 940,
-        vertical_position: float = 0.68,
+        vertical_position: float = 0.48,
     ):
 
         self.width = width
@@ -888,7 +888,8 @@ class ShlokaHighlighter:
 
             image.save(
                 frame_path,
-                "PNG",
+                format="PNG",
+            
             )
 
         return duration
@@ -944,17 +945,40 @@ class ShlokaHighlighter:
             ffmpeg,
             "-y",
 
+            # ------------------------------------------------
+            # PNG sequence
+            # ------------------------------------------------
+
             "-framerate",
             str(self.fps),
 
             "-i",
             input_pattern,
 
+            # ------------------------------------------------
+            # Preserve RGBA from PNG
+            # ------------------------------------------------
+
+            "-vf",
+            "format=rgba",
+
+            # ------------------------------------------------
+            # Exact duration
+            # ------------------------------------------------
+
             "-t",
-            str(duration),
+            f"{duration:.6f}",
+
+            # ------------------------------------------------
+            # VP9
+            # ------------------------------------------------
 
             "-c:v",
             "libvpx-vp9",
+
+            # ------------------------------------------------
+            # REAL VP9 ALPHA
+            # ------------------------------------------------
 
             "-pix_fmt",
             "yuva420p",
@@ -962,17 +986,78 @@ class ShlokaHighlighter:
             "-auto-alt-ref",
             "0",
 
+            # Explicitly tell WebM/VP9 this stream contains alpha
+            "-metadata:s:v:0",
+            "alpha_mode=1",
+
+            # ------------------------------------------------
+            # Quality
+            # ------------------------------------------------
+
+            "-lossless",
+            "1",
+
+            "-an",
+
             output_path,
         ]
 
+        print()
         print(
             "[ShlokaHighlighter] "
-            "Encoding transparent WebM..."
+            "Encoding TRANSPARENT WebM..."
         )
+
+        print(
+            "FFmpeg command:"
+        )
+
+        print(
+            " ".join(
+                f'"{item}"'
+                if " " in str(item)
+                else str(item)
+                for item in command
+            )
+        )
+
+        print()
 
         subprocess.run(
             command,
             check=True,
+        )
+
+        # ----------------------------------------------------
+        # Verify output
+        # ----------------------------------------------------
+
+        output_file = Path(
+            output_path
+        )
+
+        if not output_file.exists():
+
+            raise FileNotFoundError(
+                "Transparent WebM was not created:\n"
+                f"{output_file}"
+            )
+
+        if output_file.stat().st_size <= 0:
+
+            raise RuntimeError(
+                "Transparent WebM is empty:\n"
+                f"{output_file}"
+            )
+
+        print(
+            "[ShlokaHighlighter] "
+            f"WebM created: {output_file}"
+        )
+
+        print(
+            "[ShlokaHighlighter] "
+            f"Size: {output_file.stat().st_size:,} bytes"
         )
 
     # ========================================================
