@@ -100,14 +100,14 @@ class TeachingScriptGenerator:
             },
         )
 
-        print("=" * 80)
-        print("FULL RESPONSE")
-        print("=" * 80)
-        print(response)
-        print("=" * 80)
+        # print("=" * 80)
+        # print("FULL RESPONSE")
+        # print("=" * 80)
+        # print(response)
+        # print("=" * 80)
 
         content = response["message"]["content"].strip()
-        print("CONTENT =", repr(content))
+        # print("CONTENT =", repr(content))
 
         return self._parse_script(
             verse.id or verse.verse,

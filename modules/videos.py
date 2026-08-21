@@ -116,7 +116,8 @@ class VideoRenderer:
         command = [
 
             self.ffprobe,
-
+            "-hide_banner",
+            "-loglevel", "error",
             "-v",
             "error",
 
@@ -162,6 +163,73 @@ class VideoRenderer:
             )
 
         return duration
+
+    # ==========================================================
+    # Video DURATION
+    # ==========================================================
+
+    def _video_duration(
+        self,
+        video_file,
+    ):
+        """
+        Return the exact duration of a video file in seconds.
+
+        Uses FFprobe so the duration comes from the actual
+        rendered scene video.
+        """
+
+        video_file = Path(
+            video_file
+        )
+
+        if not video_file.exists():
+            raise FileNotFoundError(
+                f"Video file not found:\n"
+                f"{video_file}"
+            )
+
+        command = [
+            self.ffprobe,
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(video_file),
+        ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        duration_text = (
+            result.stdout.strip()
+        )
+
+        if not duration_text:
+            raise RuntimeError(
+                f"FFprobe returned no duration for:\n"
+                f"{video_file}"
+            )
+
+        duration = float(
+            duration_text
+        )
+
+        if duration <= 0:
+            raise RuntimeError(
+                f"Invalid video duration "
+                f"{duration:.6f}s:\n"
+                f"{video_file}"
+            )
+
+        return duration
+
 
     # ==========================================================
     # CHECK FILE
@@ -253,283 +321,6 @@ class VideoRenderer:
         print("=" * 80)
         print()
 
-    # ==========================================================
-    # CREATE ASS SUBTITLE FILE
-    # ==========================================================
-
-    def _create_ass_subtitles(
-        self,
-        subtitle_file,
-        ass_file,
-    ):
-        """
-        Convert the generated SRT into an ASS subtitle file.
-
-        ASS gives us much better control over:
-
-        - Font
-        - Size
-        - Bold
-        - Outline
-        - Shadow
-        - Position
-        - Margins
-        """
-
-        subtitle_file = Path(
-            subtitle_file
-        )
-
-        ass_file = Path(
-            ass_file
-        )
-
-        ass_file.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        # ------------------------------------------------------
-        # Read SRT
-        # ------------------------------------------------------
-
-        with open(
-            subtitle_file,
-            "r",
-            encoding="utf-8-sig",
-        ) as f:
-
-            content = f.read()
-
-        blocks = content.strip().split(
-            "\n\n"
-        )
-
-        # ------------------------------------------------------
-        # ASS header
-        # ------------------------------------------------------
-
-        lines = [
-
-            "[Script Info]",
-
-            "ScriptType: v4.00+",
-
-            "PlayResX: 1080",
-
-            "PlayResY: 1920",
-
-            "ScaledBorderAndShadow: yes",
-
-            "",
-
-            "[V4+ Styles]",
-
-            (
-                "Format: "
-                "Name,"
-                "Fontname,"
-                "Fontsize,"
-                "PrimaryColour,"
-                "SecondaryColour,"
-                "OutlineColour,"
-                "BackColour,"
-                "Bold,"
-                "Italic,"
-                "Underline,"
-                "StrikeOut,"
-                "ScaleX,"
-                "ScaleY,"
-                "Spacing,"
-                "Angle,"
-                "BorderStyle,"
-                "Outline,"
-                "Shadow,"
-                "Alignment,"
-                "MarginL,"
-                "MarginR,"
-                "MarginV,"
-                "Encoding"
-            ),
-
-            (
-                "Style: Default,"
-                f"{self.SUBTITLE_FONT},"
-                f"{self.SUBTITLE_FONT_SIZE},"
-                f"{self.SUBTITLE_PRIMARY_COLOUR},"
-                "&H00000000,"
-                f"{self.SUBTITLE_OUTLINE_COLOUR},"
-                f"{self.SUBTITLE_SHADOW_COLOUR},"
-                f"{-1 if self.SUBTITLE_BOLD else 0},"
-                "0,"
-                "0,"
-                "0,"
-                "100,"
-                "100,"
-                "0,"
-                "0,"
-                "1,"
-                f"{self.SUBTITLE_OUTLINE},"
-                f"{self.SUBTITLE_SHADOW},"
-                f"{self.SUBTITLE_ALIGNMENT},"
-                f"{self.SUBTITLE_MARGIN_L},"
-                f"{self.SUBTITLE_MARGIN_R},"
-                f"{self.SUBTITLE_MARGIN_V},"
-                "1"
-            ),
-
-            (
-                "Style: SBG,"
-                f"{self.SUBTITLE_FONT},"
-                f"{self.SUBTITLE_FONT_SIZE},"
-                f"{self.SUBTITLE_PRIMARY_COLOUR},"
-                "&H00000000,"
-                f"{self.SUBTITLE_OUTLINE_COLOUR},"
-                "&H900B0703,"
-                f"{-1 if self.SUBTITLE_BOLD else 0},"
-                "0,"
-                "0,"
-                "0,"
-                "100,"
-                "100,"
-                "1,"
-                "0,"
-                "1,"
-                "3,"
-                "3,"
-                "2,"
-                "100,"
-                "100,"
-                "330,"
-                "1"
-            ),
-
-            "",
-
-            "[Events]",
-
-            (
-                "Format: "
-                "Layer,"
-                "Start,"
-                "End,"
-                "Style,"
-                "Name,"
-                "MarginL,"
-                "MarginR,"
-                "MarginV,"
-                "Effect,"
-                "Text"
-            ),
-        ]
-
-        # ------------------------------------------------------
-        # Parse SRT blocks
-        # ------------------------------------------------------
-
-        for block in blocks:
-
-            block_lines = block.splitlines()
-
-            if len(block_lines) < 3:
-
-                continue
-
-            # --------------------------------------------------
-            # Timing line
-            # --------------------------------------------------
-
-            timing_line = block_lines[1]
-
-            if "-->" not in timing_line:
-
-                continue
-
-            start_text, end_text = (
-                timing_line.split(
-                    "-->",
-                    1,
-                )
-            )
-
-            start_text = (
-                start_text.strip()
-            )
-
-            end_text = (
-                end_text.strip()
-            )
-
-            start = (
-                self._srt_to_ass_time(
-                    start_text
-                )
-            )
-
-            end = (
-                self._srt_to_ass_time(
-                    end_text
-                )
-            )
-
-            # --------------------------------------------------
-            # Subtitle text
-            # --------------------------------------------------
-
-            text = "\\N".join(
-                block_lines[2:]
-            )
-
-            text = (
-                text
-                .replace(
-                    "{",
-                    "\\{",
-                )
-                .replace(
-                    "}",
-                    "\\}",
-                )
-            )
-
-            # --------------------------------------------------
-            # ASS event
-            # --------------------------------------------------
-
-            lines.append(
-                (
-                    "Dialogue: "
-                    f"0,"
-                    f"{start},"
-                    f"{end},"
-                    "SBG,"
-                    ","
-                    "0,"
-                    "0,"
-                    "0,"
-                    ","
-                    f"{text}"
-                )
-            )
-
-        # ------------------------------------------------------
-        # Write ASS
-        # ------------------------------------------------------
-
-        with open(
-            ass_file,
-            "w",
-            encoding="utf-8-sig",
-            newline="\n",
-        ) as f:
-
-            f.write(
-                "\n".join(
-                    lines
-                )
-            )
-
-        return ass_file
 
     # ==========================================================
     # SRT → ASS TIME
@@ -625,6 +416,1235 @@ class VideoRenderer:
             f"{centiseconds:02d}"
         )
 
+
+    # ==========================================================
+    # CREATE NARRATION KARAOKE ASS
+    # ==========================================================
+
+    def _create_narration_karaoke_ass(
+        self,
+        narration_json,
+        ass_file,
+    ):
+        """
+        Create an ASS karaoke subtitle file from narration.json.
+
+        The narration.json word timings are the source of truth.
+
+        ASS karaoke behaviour:
+
+            Future words   = white
+            Spoken words   = turquoise
+
+        This creates ONE subtitle layer only.
+        """
+
+        import json
+
+        narration_json = Path(
+            narration_json
+        )
+
+        ass_file = Path(
+            ass_file
+        )
+
+        # ======================================================
+        # LOAD JSON
+        # ======================================================
+
+        with open(
+            narration_json,
+            "r",
+            encoding="utf-8",
+        ) as f:
+
+            data = json.load(f)
+
+        words = data.get(
+            "words",
+            []
+        )
+
+        if not words:
+
+            raise ValueError(
+                "No word timings found in narration.json:\n"
+                f"{narration_json}"
+            )
+
+        # ======================================================
+        # CLEAN WORDS
+        # ======================================================
+
+        cleaned_words = []
+
+        for entry in words:
+
+            text = str(
+                entry.get(
+                    "text",
+                    "",
+                )
+            ).strip()
+
+            if not text:
+                continue
+
+            start = float(
+                entry.get(
+                    "start",
+                    0,
+                )
+            )
+
+            end = float(
+                entry.get(
+                    "end",
+                    0,
+                )
+            )
+
+            if end <= start:
+                continue
+
+            cleaned_words.append(
+                {
+                    "text": text,
+                    "start": start,
+                    "end": end,
+                }
+            )
+
+        if not cleaned_words:
+
+            raise ValueError(
+                "Narration JSON contains no valid "
+                "word timings:\n"
+                f"{narration_json}"
+            )
+
+        # ======================================================
+        # ASS TIME FORMAT
+        # ======================================================
+
+        def ass_time(seconds):
+
+            seconds = max(
+                0.0,
+                float(seconds),
+            )
+
+            hours = int(
+                seconds // 3600
+            )
+
+            minutes = int(
+                (seconds % 3600)
+                // 60
+            )
+
+            secs = (
+                seconds
+                - (hours * 3600)
+                - (minutes * 60)
+            )
+
+            return (
+                f"{hours}:"
+                f"{minutes:02d}:"
+                f"{secs:05.2f}"
+            )
+
+        # ======================================================
+        # TURQUOISE
+        #
+        # ASS uses BGR hexadecimal.
+        #
+        # Desired RGB:
+        #       64, 224, 208
+        #
+        # ASS:
+        #       &H00D0E040
+        # ======================================================
+
+        turquoise = (
+            "&H00D0E040"
+        )
+
+        white = (
+            "&H00FFFFFF"
+        )
+
+        outline = (
+            "&H00120A05"
+        )
+
+        shadow = (
+            "&H80000000"
+        )
+
+        # ======================================================
+        # FONT
+        # ======================================================
+
+        font_name = (
+            "Noto Sans"
+        )
+
+        # ======================================================
+        # BUILD ASS
+        # ======================================================
+
+        lines = []
+
+        lines.append(
+            "[Script Info]"
+        )
+
+        lines.append(
+            "ScriptType: v4.00+"
+        )
+
+        lines.append(
+            "PlayResX: 1080"
+        )
+
+        lines.append(
+            "PlayResY: 1920"
+        )
+
+        lines.append(
+            "ScaledBorderAndShadow: yes"
+        )
+
+        lines.append(
+            ""
+        )
+
+        lines.append(
+            "[V4+ Styles]"
+        )
+
+        lines.append(
+            "Format: "
+            "Name, Fontname, Fontsize, "
+            "PrimaryColour, SecondaryColour, "
+            "OutlineColour, BackColour, "
+            "Bold, Italic, Underline, StrikeOut, "
+            "ScaleX, ScaleY, Spacing, Angle, "
+            "BorderStyle, Outline, Shadow, "
+            "Alignment, MarginL, MarginR, MarginV, Encoding"
+        )
+
+        lines.append(
+            "Style: Default,"
+            f"{font_name},"
+            "54,"
+            f"{turquoise},"
+            f"{white},"
+            f"{outline},"
+            f"{shadow},"
+            "0,0,0,0,"
+            "100,100,0,0,"
+            "1,3,2,"
+            "2,80,80,545,1"
+        )
+
+        lines.append(
+            ""
+        )
+
+        lines.append(
+            "[Events]"
+        )
+
+        lines.append(
+            "Format: "
+            "Layer, Start, End, Style, "
+            "Name, MarginL, MarginR, MarginV, "
+            "Effect, Text"
+        )
+
+        # ======================================================
+        # BUILD WORD-BY-WORD KARAOKE EVENTS
+        # ======================================================
+
+        for i, word in enumerate(
+            cleaned_words
+        ):
+
+            start = word["start"]
+
+            # --------------------------------------------------
+            # Determine end.
+            #
+            # Each event lasts from this word's start until
+            # the next word starts.
+            #
+            # This prevents gaps between words.
+            # --------------------------------------------------
+
+            if i + 1 < len(
+                cleaned_words
+            ):
+
+                end = max(
+                    word["end"],
+                    cleaned_words[
+                        i + 1
+                    ]["start"],
+                )
+
+            else:
+
+                end = word["end"]
+
+            # --------------------------------------------------
+            # Build complete sentence.
+            #
+            # We use ASS karaoke tags so the currently spoken
+            # word is turquoise while future words remain white.
+            # --------------------------------------------------
+
+            karaoke_parts = []
+
+            for j, current in enumerate(
+                cleaned_words
+            ):
+
+                text = current[
+                    "text"
+                ]
+
+                # Escape ASS special characters.
+                text = (
+                    text
+                    .replace(
+                        "\\",
+                        "\\\\",
+                    )
+                    .replace(
+                        "{",
+                        "\\{",
+                    )
+                    .replace(
+                        "}",
+                        "\\}",
+                    )
+                )
+
+                # ----------------------------------------------
+                # Duration of this word in centiseconds.
+                # ----------------------------------------------
+
+                word_duration = max(
+                    1,
+                    round(
+                        (
+                            current["end"]
+                            - current["start"]
+                        )
+                        * 100
+                    ),
+                )
+
+                # ------------------------------------------------
+                # ASS \k:
+                #
+                # SecondaryColour is shown before the karaoke
+                # timing is reached.
+                #
+                # PrimaryColour is shown after it is reached.
+                #
+                # We deliberately use:
+                #
+                # Primary   = turquoise
+                # Secondary = white
+                #
+                # Therefore the spoken portion becomes turquoise.
+                # ------------------------------------------------
+
+                karaoke_parts.append(
+                    f"{{\\k{word_duration}}}"
+                    f"{text}"
+                )
+
+                if j < len(
+                    cleaned_words
+                ) - 1:
+
+                    karaoke_parts.append(
+                        " "
+                    )
+
+            subtitle_text = (
+                "".join(
+                    karaoke_parts
+                )
+            )
+
+            lines.append(
+                "Dialogue: 0,"
+                f"{ass_time(start)},"
+                f"{ass_time(end)},"
+                "Default,,"
+                "0,0,0,"
+                "0,"
+                ","
+                f"{subtitle_text}"
+            )
+
+        # ======================================================
+        # WRITE FILE
+        # ======================================================
+
+        ass_file.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        with open(
+            ass_file,
+            "w",
+            encoding="utf-8-sig",
+        ) as f:
+
+            f.write(
+                "\n".join(
+                    lines
+                )
+            )
+
+        Logger.success(
+            "Narration karaoke ASS created -> "
+            f"{ass_file}"
+        )
+
+        Logger.info(
+            f"Karaoke words : "
+            f"{len(cleaned_words)}"
+        )
+
+
+    # ==========================================================
+    # GENERIC WORD-BY-WORD SUBTITLE OVERLAY
+    # ==========================================================
+
+    def _create_word_highlight_overlay(
+        self,
+        narration_json,
+        output_dir,
+        duration,
+    ):
+        """
+        Create a transparent PNG frame sequence containing
+        word-by-word subtitle highlighting.
+
+        Behaviour
+        ---------
+        - Reads narration.json
+        - Uses narration.json word timings as the source of truth
+        - Splits grouped words
+        - Allocates grouped timing proportionally
+        - Displays all subtitle words
+        - Exactly ONE spoken word is turquoise
+        - Other words are white
+        - During pauses, the last spoken word remains turquoise
+        - Automatically wraps subtitles inside a safe screen area
+        - Works for English / Hindi / Sanskrit
+        """
+
+        import json
+        import re
+        import shutil
+
+        from PIL import (
+            Image,
+            ImageDraw,
+            ImageFont,
+        )
+
+        # ======================================================
+        # CONSTANTS
+        # ======================================================
+
+        width = VIDEO_WIDTH
+        height = VIDEO_HEIGHT
+        fps = FPS
+
+        # ------------------------------------------------------
+        # Subtitle safe area
+        # ------------------------------------------------------
+
+        max_text_width = 900
+
+        bottom_margin = 300
+
+        line_spacing = 12
+
+        # ------------------------------------------------------
+        # Font
+        # ------------------------------------------------------
+
+        font_candidates = [
+
+            Path(
+                "assets/fonts/"
+                "NotoSansDevanagari-Regular.ttf"
+            ),
+
+            Path(
+                "assets/fonts/"
+                "NotoSansDevanagari/"
+                "NotoSansDevanagari-Regular.ttf"
+            ),
+
+        ]
+
+        font_file = None
+
+        for candidate in font_candidates:
+
+            if candidate.exists():
+
+                font_file = candidate
+                break
+
+        if font_file is None:
+
+            raise FileNotFoundError(
+                "Noto Sans Devanagari font was not found.\n"
+                "Expected:\n"
+                "assets/fonts/NotoSansDevanagari-Regular.ttf"
+            )
+
+        # ------------------------------------------------------
+        # Font sizes
+        # ------------------------------------------------------
+
+        font_size = 54
+
+        font = ImageFont.truetype(
+            str(font_file),
+            font_size,
+        )
+
+        # ------------------------------------------------------
+        # Colours
+        #
+        # PIL uses RGB.
+        # ------------------------------------------------------
+
+        WHITE = (
+            255,
+            255,
+            255,
+        )
+
+        TURQUOISE = (
+            0,
+            230,
+            243,
+        )
+
+        OUTLINE = (
+            18,
+            10,
+            5,
+        )
+
+        # ======================================================
+        # LOAD JSON
+        # ======================================================
+
+        with open(
+            narration_json,
+            "r",
+            encoding="utf-8",
+        ) as f:
+
+            narration_data = json.load(f)
+
+        raw_words = narration_data.get(
+            "words",
+            [],
+        )
+
+        if not raw_words:
+
+            raise ValueError(
+                "No word timings found in:\n"
+                f"{narration_json}"
+            )
+
+        # ======================================================
+        # BUILD INDIVIDUAL WORD TIMINGS
+        # ======================================================
+
+        words = []
+
+        punctuation_only = re.compile(
+            r"^[।॥,.;:!?।॥]+$"
+        )
+
+        for entry in raw_words:
+
+            raw_text = str(
+                entry.get(
+                    "text",
+                    "",
+                )
+            ).strip()
+
+            if not raw_text:
+                continue
+
+            try:
+
+                start = float(
+                    entry["start"]
+                )
+
+                end = float(
+                    entry["end"]
+                )
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+            ):
+
+                continue
+
+            if end < start:
+                end = start
+
+            # --------------------------------------------------
+            # Split grouped narration entries.
+            #
+            # Example:
+            #
+            # "धर्मक्षेत्रे कुरुक्षेत्रे"
+            #
+            # becomes:
+            #
+            # धर्मक्षेत्रे
+            # कुरुक्षेत्रे
+            # --------------------------------------------------
+
+            tokens = raw_text.split()
+
+            if not tokens:
+                continue
+
+            # --------------------------------------------------
+            # Punctuation-only tokens should NOT become their
+            # own highlighted word.
+            #
+            # Example:
+            #
+            # "सञ्जय ॥"
+            #
+            # becomes:
+            #
+            # "सञ्जय ॥"
+            #
+            # with one timing.
+            # --------------------------------------------------
+
+            cleaned_tokens = []
+
+            for token in tokens:
+
+                if punctuation_only.match(
+                    token
+                ):
+
+                    if cleaned_tokens:
+
+                        cleaned_tokens[-1][
+                            "display"
+                        ] += token
+
+                    continue
+
+                cleaned_tokens.append(
+                    {
+                        "display": token,
+                        "raw": token,
+                    }
+                )
+
+            if not cleaned_tokens:
+                continue
+
+            # --------------------------------------------------
+            # Allocate timing proportionally.
+            #
+            # Longer words receive proportionally more time.
+            # --------------------------------------------------
+
+            total_length = sum(
+                max(
+                    1,
+                    len(
+                        item["raw"]
+                    ),
+                )
+                for item in cleaned_tokens
+            )
+
+            total_duration = (
+                end - start
+            )
+
+            current_time = start
+
+            for item in cleaned_tokens:
+
+                word_length = max(
+                    1,
+                    len(
+                        item["raw"]
+                    ),
+                )
+
+                portion = (
+                    word_length
+                    / total_length
+                )
+
+                word_duration = (
+                    total_duration
+                    * portion
+                )
+
+                word_start = (
+                    current_time
+                )
+
+                word_end = (
+                    current_time
+                    + word_duration
+                )
+
+                words.append(
+                    {
+                        "text": item[
+                            "display"
+                        ],
+                        "start": word_start,
+                        "end": word_end,
+                    }
+                )
+
+                current_time = word_end
+
+        if not words:
+
+            raise ValueError(
+                "Could not create usable word timings from:\n"
+                f"{narration_json}"
+            )
+
+        # ======================================================
+        # NORMALIZE TIMINGS
+        # ======================================================
+
+        words.sort(
+            key=lambda item:
+            item["start"]
+        )
+
+        for word in words:
+
+            word["start"] = max(
+                0.0,
+                min(
+                    float(
+                        word["start"]
+                    ),
+                    duration,
+                ),
+            )
+
+            word["end"] = max(
+                word["start"],
+                min(
+                    float(
+                        word["end"]
+                    ),
+                    duration,
+                ),
+            )
+
+        # ======================================================
+        # LOG
+        # ======================================================
+
+        Logger.error(
+            f"Subtitle words : "
+            f"{len(words)}"
+        )
+
+        for word in words:
+
+            Logger.error(
+                f"  {word['text']} "
+                f"{word['start']:.3f} -> "
+                f"{word['end']:.3f}"
+            )
+
+        # ======================================================
+        # PREPARE OUTPUT DIRECTORY
+        # ======================================================
+
+        output_dir = Path(
+            output_dir
+        )
+
+        output_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        # ------------------------------------------------------
+        # Remove old frames.
+        # ------------------------------------------------------
+
+        for old_file in output_dir.glob(
+            "frame_*.png"
+        ):
+
+            try:
+
+                old_file.unlink()
+
+            except OSError:
+                pass
+
+        # ======================================================
+        # TEXT MEASUREMENT HELPERS
+        # ======================================================
+
+        def text_width(
+            draw,
+            text,
+        ):
+
+            if not text:
+                return 0
+
+            bbox = draw.textbbox(
+                (0, 0),
+                text,
+                font=font,
+                stroke_width=0,
+            )
+
+            return (
+                bbox[2] - bbox[0]
+            )
+
+        # ======================================================
+        # WRAP WORDS
+        # ======================================================
+
+        def wrap_words(
+            draw,
+            active_index,
+        ):
+            """
+            Wrap the complete narration into lines while keeping
+            words together.
+
+            The active word is NOT allowed to affect wrapping.
+            """
+
+            lines = []
+
+            current_line = []
+
+            current_width = 0
+
+            for index, word in enumerate(
+                words
+            ):
+
+                text = word[
+                    "text"
+                ]
+
+                word_width = text_width(
+                    draw,
+                    text,
+                )
+
+                space_width = text_width(
+                    draw,
+                    " ",
+                )
+
+                proposed_width = (
+                    word_width
+                    if not current_line
+                    else
+                    current_width
+                    + space_width
+                    + word_width
+                )
+
+                if (
+                    current_line
+                    and proposed_width
+                    > max_text_width
+                ):
+
+                    lines.append(
+                        current_line
+                    )
+
+                    current_line = [
+                        index
+                    ]
+
+                    current_width = (
+                        word_width
+                    )
+
+                else:
+
+                    current_line.append(
+                        index
+                    )
+
+                    current_width = (
+                        proposed_width
+                    )
+
+            if current_line:
+
+                lines.append(
+                    current_line
+                )
+
+            return lines
+
+        # ======================================================
+        # DETERMINE ACTIVE WORD
+        # ======================================================
+
+        def get_active_word(
+            current_time,
+        ):
+            """
+            Return the word that should currently be turquoise.
+
+            During a pause, the previous spoken word remains
+            active until the next word starts.
+            """
+
+            active = None
+
+            for index, word in enumerate(
+                words
+            ):
+
+                if (
+                    word["start"]
+                    <= current_time
+                ):
+
+                    active = index
+
+                else:
+
+                    break
+
+            return active
+
+        # ======================================================
+        # DRAW ONE FRAME
+        # ======================================================
+
+        def draw_frame(
+            frame_time,
+        ):
+
+            image = Image.new(
+                "RGBA",
+                (
+                    width,
+                    height,
+                ),
+                (
+                    0,
+                    0,
+                    0,
+                    0,
+                ),
+            )
+
+            draw = ImageDraw.Draw(
+                image
+            )
+
+            active_index = (
+                get_active_word(
+                    frame_time
+                )
+            )
+
+            lines = wrap_words(
+                draw,
+                active_index,
+            )
+
+            # --------------------------------------------------
+            # Calculate total subtitle height
+            # --------------------------------------------------
+
+            line_heights = []
+
+            for line in lines:
+
+                bbox = draw.textbbox(
+                    (0, 0),
+                    "Ag",
+                    font=font,
+                    stroke_width=0,
+                )
+
+                line_heights.append(
+                    bbox[3] - bbox[1]
+                )
+
+            total_height = (
+                sum(
+                    line_heights
+                )
+                + (
+                    line_spacing
+                    * max(
+                        0,
+                        len(lines) - 1,
+                    )
+                )
+            )
+
+            # --------------------------------------------------
+            # Vertically center the subtitle block around the
+            # bottom safe area.
+            # --------------------------------------------------
+
+            start_y = (
+                height
+                - bottom_margin
+                - total_height
+            )
+
+            # Never allow the subtitle block above the image.
+
+            start_y = max(
+                100,
+                start_y,
+            )
+
+            # --------------------------------------------------
+            # Draw each line
+            # --------------------------------------------------
+
+            current_y = start_y
+
+            for line_index, line in enumerate(
+                lines
+            ):
+
+                # ----------------------------------------------
+                # Calculate line width
+                # ----------------------------------------------
+
+                line_width = 0
+
+                for position, word_index in enumerate(
+                    line
+                ):
+
+                    word_text = words[
+                        word_index
+                    ]["text"]
+
+                    line_width += text_width(
+                        draw,
+                        word_text,
+                    )
+
+                    if position < (
+                        len(line) - 1
+                    ):
+
+                        line_width += (
+                            text_width(
+                                draw,
+                                " ",
+                            )
+                        )
+
+                # ----------------------------------------------
+                # Center line horizontally
+                # ----------------------------------------------
+
+                x = (
+                    width
+                    - line_width
+                ) / 2
+
+                # ----------------------------------------------
+                # Draw words
+                # ----------------------------------------------
+
+                for position, word_index in enumerate(
+                    line
+                ):
+
+                    word_text = words[
+                        word_index
+                    ]["text"]
+
+                    if (
+                        word_index
+                        == active_index
+                    ):
+
+                        fill = TURQUOISE
+
+                    else:
+
+                        fill = WHITE
+
+                    # ------------------------------------------
+                    # Text outline
+                    # ------------------------------------------
+
+                    draw.text(
+                        (
+                            x,
+                            current_y,
+                        ),
+                        word_text,
+                        font=font,
+                        fill=fill,
+                        stroke_width=3,
+                        stroke_fill=OUTLINE,
+                    )
+
+                    x += text_width(
+                        draw,
+                        word_text,
+                    )
+
+                    if position < (
+                        len(line) - 1
+                    ):
+
+                        x += text_width(
+                            draw,
+                            " ",
+                        )
+
+                current_y += (
+                    line_heights[
+                        line_index
+                    ]
+                    + line_spacing
+                )
+
+            return image
+
+        # ======================================================
+        # GENERATE FRAMES
+        # ======================================================
+
+        total_frames = max(
+            1,
+            int(
+                round(
+                    duration
+                    * fps
+                )
+            ),
+        )
+
+        Logger.info(
+            "Generating subtitle overlay "
+            f"frames : {total_frames}"
+        )
+
+        for frame_number in range(
+            total_frames
+        ):
+
+            frame_time = (
+                frame_number
+                / fps
+            )
+
+            frame = draw_frame(
+                frame_time
+            )
+
+            frame_path = (
+                output_dir
+                / (
+                    f"frame_"
+                    f"{frame_number:06d}"
+                    f".png"
+                )
+            )
+
+            frame.save(
+                frame_path,
+                "PNG",
+            )
+
+        # ======================================================
+        # FINAL FRAME
+        #
+        # Ensure the last frame covers the exact end of audio.
+        # ======================================================
+
+        if total_frames > 0:
+
+            final_frame = draw_frame(
+                max(
+                    0.0,
+                    duration
+                    - (
+                        1
+                        / fps
+                    ),
+                )
+            )
+
+            final_frame.save(
+                output_dir
+                / (
+                    f"frame_"
+                    f"{total_frames - 1:06d}"
+                    f".png"
+                ),
+                "PNG",
+            )
+
+        Logger.success(
+            "Word-highlight subtitle frames "
+            f"created -> {output_dir}"
+        )
+
+        return output_dir
+
     # ==========================================================
     # RENDER ONE SCENE
     # ==========================================================
@@ -633,20 +1653,40 @@ class VideoRenderer:
         self,
         image_file,
         audio_file,
-        subtitle_file,
-        output_file,
+        subtitle_file=None,
+        narration_json=None,
+        output_file=None,
     ):
         """
-        Create one independent scene video.
+        Render one scene using the generic transparent
+        word-highlight overlay.
 
-        Image
-            +
-        scene narration
-            +
-        styled subtitles
-            ↓
-        scene_video.mp4
+        SAME FUNCTION FOR:
+
+            Scene 1
+            Scene 2
+            Scene 3
+            Scene 4
+
+        Source of truth:
+
+            narration.json
+
+        Subtitle behaviour:
+
+            WHITE WHITE TURQUOISE WHITE
+
+        Exactly one currently spoken word is turquoise.
+
+        During narration pauses, the last spoken word remains
+        turquoise until the next spoken word begins.
         """
+
+        import subprocess
+
+        # ======================================================
+        # VALIDATE INPUTS
+        # ======================================================
 
         image_file = self._check_file(
             image_file,
@@ -658,10 +1698,27 @@ class VideoRenderer:
             "Scene narration",
         )
 
-        subtitle_file = self._check_file(
-            subtitle_file,
-            "Scene subtitles",
+        if narration_json is None:
+
+            raise ValueError(
+                "narration_json is required."
+            )
+
+        narration_json = self._check_file(
+            narration_json,
+            "Narration JSON",
         )
+
+        # ======================================================
+        # OUTPUT
+        # ======================================================
+
+        if output_file is None:
+
+            output_file = (
+                Path(image_file).parent
+                / "scene_video.mp4"
+            )
 
         output_file = Path(
             output_file
@@ -672,80 +1729,136 @@ class VideoRenderer:
             exist_ok=True,
         )
 
-        # ------------------------------------------------------
-        # Exact narration duration
-        # ------------------------------------------------------
+        # ======================================================
+        # AUDIO DURATION
+        # ======================================================
 
-        duration = (
-            self._audio_duration(
-                audio_file
-            )
+        duration = self._audio_duration(
+            audio_file
         )
 
         Logger.info(
             f"Scene duration : "
-            f"{duration:.2f}s"
+            f"{duration:.3f}s"
         )
 
-        # ------------------------------------------------------
-        # Create ASS subtitle file
-        # ------------------------------------------------------
+        # ======================================================
+        # SUBTITLE FRAME DIRECTORY
+        # ======================================================
 
-        ass_file = (
+        overlay_dir = (
             output_file.parent
-            / "subtitles.ass"
+            / "_subtitle_frames"
         )
 
-        self._create_ass_subtitles(
-            subtitle_file,
-            ass_file,
+        # ======================================================
+        # CREATE GENERIC WORD-HIGHLIGHT OVERLAY
+        # ======================================================
+
+        self._create_word_highlight_overlay(
+            narration_json=str(
+                narration_json
+            ),
+            output_dir=str(
+                overlay_dir
+            ),
+            duration=duration,
         )
 
-        ass_path = (
-            self._escape_filter_path(
-                ass_file
+        # ======================================================
+        # INPUT PATTERN
+        # ======================================================
+
+        input_pattern = (
+            overlay_dir
+            / "frame_%06d.png"
+        )
+
+        if not input_pattern.parent.exists():
+
+            raise FileNotFoundError(
+                "Subtitle frame directory "
+                "was not created:\n"
+                f"{overlay_dir}"
             )
-        )
 
-        # ------------------------------------------------------
-        # Video filter
-        # ------------------------------------------------------
+        # ======================================================
+        # FFMPEG FILTER
+        # ======================================================
+        #
+        # Input 0:
+        #     static scene image
+        #
+        # Input 1:
+        #     narration
+        #
+        # Input 2:
+        #     transparent subtitle PNG sequence
+        #
+        # Image + subtitle overlay
+        #         ↓
+        #     final scene video
+        #
+        # ======================================================
 
         video_filter = (
 
+            # ----------------------------------------------
+            # Background image
+            # ----------------------------------------------
+
+            f"[0:v]"
             f"scale="
             f"{VIDEO_WIDTH}:"
             f"{VIDEO_HEIGHT}:"
             f"force_original_aspect_ratio=decrease,"
-
             f"pad="
             f"{VIDEO_WIDTH}:"
             f"{VIDEO_HEIGHT}:"
             f"(ow-iw)/2:"
             f"(oh-ih)/2,"
-
             f"fps={FPS},"
+            f"format=rgba"
+            f"[bg];"
 
-            "format=yuv420p,"
+            # ----------------------------------------------
+            # Subtitle overlay
+            # ----------------------------------------------
 
-            "setsar=1,"
+            f"[2:v]"
+            f"format=rgba"
+            f"[sub];"
 
-            f"ass='{ass_path}'"
+            # ----------------------------------------------
+            # Overlay
+            # ----------------------------------------------
+
+            f"[bg][sub]"
+            f"overlay="
+            f"0:0:"
+            f"shortest=1,"
+            f"format=yuv420p"
+            f"[v]"
         )
 
-        # ------------------------------------------------------
-        # FFmpeg command
-        # ------------------------------------------------------
+        # ======================================================
+        # FFMPEG COMMAND
+        # ======================================================
 
         command = [
 
             self.ffmpeg,
 
+            "-hide_banner",
+
+            "-loglevel",
+            "error",
+
             "-y",
 
-            # --------------------------------------------------
-            # Fixed image
-            # --------------------------------------------------
+            # ==================================================
+            # INPUT 0 — IMAGE
+            # ==================================================
 
             "-loop",
             "1",
@@ -753,33 +1866,43 @@ class VideoRenderer:
             "-i",
             str(image_file),
 
-            # --------------------------------------------------
-            # Narration
-            # --------------------------------------------------
+            # ==================================================
+            # INPUT 1 — NARRATION
+            # ==================================================
 
             "-i",
             str(audio_file),
 
-            # --------------------------------------------------
-            # Video filter
-            # --------------------------------------------------
+            # ==================================================
+            # INPUT 2 — TRANSPARENT SUBTITLE FRAMES
+            # ==================================================
 
-            "-vf",
+            "-framerate",
+            str(FPS),
+
+            "-i",
+            str(input_pattern),
+
+            # ==================================================
+            # FILTER
+            # ==================================================
+
+            "-filter_complex",
             video_filter,
 
-            # --------------------------------------------------
-            # Mapping
-            # --------------------------------------------------
+            # ==================================================
+            # MAP
+            # ==================================================
 
             "-map",
-            "0:v",
+            "[v]",
 
             "-map",
             "1:a",
 
-            # --------------------------------------------------
-            # Video
-            # --------------------------------------------------
+            # ==================================================
+            # VIDEO
+            # ==================================================
 
             "-c:v",
             "libx264",
@@ -793,9 +1916,9 @@ class VideoRenderer:
             "-pix_fmt",
             "yuv420p",
 
-            # --------------------------------------------------
-            # Audio
-            # --------------------------------------------------
+            # ==================================================
+            # AUDIO
+            # ==================================================
 
             "-c:a",
             "aac",
@@ -806,22 +1929,26 @@ class VideoRenderer:
             "-ar",
             "48000",
 
-            # --------------------------------------------------
-            # Exact scene duration
-            # --------------------------------------------------
+            # ==================================================
+            # EXACT DURATION
+            # ==================================================
 
             "-t",
             f"{duration:.6f}",
 
-            # --------------------------------------------------
+            # ==================================================
             # MP4
-            # --------------------------------------------------
+            # ==================================================
 
             "-movflags",
             "+faststart",
 
             str(output_file),
         ]
+
+        # ======================================================
+        # PRINT COMMAND
+        # ======================================================
 
         self._print_command(
             command
@@ -832,14 +1959,18 @@ class VideoRenderer:
             f"{output_file}"
         )
 
+        # ======================================================
+        # RUN FFMPEG
+        # ======================================================
+
         subprocess.run(
             command,
             check=True,
         )
 
-        # ------------------------------------------------------
-        # Verify output
-        # ------------------------------------------------------
+        # ======================================================
+        # VERIFY
+        # ======================================================
 
         if not output_file.exists():
 
@@ -862,377 +1993,326 @@ class VideoRenderer:
         )
 
         return output_file
-
+    
+    
     # ==========================================================
-    # RENDER SCENE 2
-    # ==========================================================
-
-    # ==========================================================
-    # RENDER SCENE 2
+    # MERGE SCENE VIDEOS
     # ==========================================================
 
-    def render_scene_2(
+    def merge_scenes(
         self,
-        image_file,
-        audio_file,
-        subtitle_file=None,
-        shloka_overlay=None,
-        output_file=None,
+        scene_videos,
+        verse_folder,
     ):
         """
-        Render Scene 2 with:
+        Merge the four independently rendered scene videos
+        using smooth video + audio crossfades.
 
-            composed_image.png
-                +
-            Shloka RGBA PNG frame sequence
-                +
-            ASS subtitles
-                +
-            narration
+        Scene architecture:
+
+            Scene 1
                 ↓
-            scene2.mp4
+            0.5s crossfade
+                ↓
+            Scene 2
+                ↓
+            0.5s crossfade
+                ↓
+            Scene 3
+                ↓
+            0.5s crossfade
+                ↓
+            Scene 4
 
-        IMPORTANT
-        ---------
-        The Shloka overlay is composited directly from the PNG
-        frame sequence.
+        The individual scene videos already contain:
 
-        We intentionally DO NOT use shloka_overlay.webm for the
-        actual compositing because the PNG frames are the proven
-        working alpha source.
+            image
+            narration
+            subtitles
+            word highlighting
 
-        Expected folder structure:
+        This function only joins them smoothly.
 
-            scene2/
-                composed_image.png
-                narration.mp3
-                subtitles.srt
-                shloka_overlay.webm
-                _shloka_frames/
-                    frame_000000.png
-                    frame_000001.png
-                    frame_000002.png
-                    ...
-                scene2.mp4
+        Background music is added later by the pipeline.
         """
 
-        # ======================================================
-        # VALIDATE INPUTS
-        # ======================================================
+        # ==========================================================
+        # VALIDATE
+        # ==========================================================
 
-        image_file = self._check_file(
-            image_file,
-            "Scene 2 image",
-        )
-
-        audio_file = self._check_file(
-            audio_file,
-            "Scene 2 narration",
-        )
-
-        if subtitle_file:
-
-            subtitle_file = self._check_file(
-                subtitle_file,
-                "Scene 2 subtitles",
+        if not scene_videos:
+            raise ValueError(
+                "No scene videos were supplied."
             )
 
-        # ======================================================
+        scene_videos = [
+            Path(video)
+            for video in scene_videos
+        ]
+
+        for index, video in enumerate(
+            scene_videos,
+            start=1,
+        ):
+
+            if not video.exists():
+
+                raise FileNotFoundError(
+                    f"Scene {index} video not found:\n"
+                    f"{video}"
+                )
+
+            if video.stat().st_size <= 0:
+
+                raise ValueError(
+                    f"Scene {index} video is empty:\n"
+                    f"{video}"
+                )
+
+        # ==========================================================
         # OUTPUT
-        # ======================================================
+        # ==========================================================
 
-        if output_file is None:
+        verse_folder = Path(
+            verse_folder
+        )
 
-            output_file = (
-                Path(image_file).parent
-                / "scene2.mp4"
-            )
+        final_folder = (
+            verse_folder
+            / "final"
+        )
 
-        else:
-
-            output_file = Path(
-                output_file
-            )
-
-        output_file.parent.mkdir(
+        final_folder.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        # ======================================================
-        # FIND SHLOKA PNG FRAME DIRECTORY
-        # ======================================================
-
-        scene_folder = (
-            Path(image_file).parent
+        output_file = (
+            final_folder
+            / "merged_video.mp4"
         )
 
-        shloka_frames_dir = (
-            scene_folder
-            / "_shloka_frames"
-        )
+        # ==========================================================
+        # TRANSITION SETTINGS
+        # ==========================================================
 
-        frame_pattern = (
-            shloka_frames_dir
-            / "frame_%06d.png"
-        )
-
-        # ------------------------------------------------------
-        # The frame directory MUST exist.
-        # ------------------------------------------------------
-
-        if not shloka_frames_dir.exists():
-
-            raise FileNotFoundError(
-                "Scene 2 Shloka frame directory not found:\n"
-                f"{shloka_frames_dir}\n\n"
-                "The Shloka highlighter must run before "
-                "Scene 2 rendering."
-            )
-
-        # ------------------------------------------------------
-        # Find at least one frame.
-        # ------------------------------------------------------
-
-        frame_files = sorted(
-            shloka_frames_dir.glob(
-                "frame_*.png"
-            )
-        )
-
-        if not frame_files:
-
-            raise FileNotFoundError(
-                "No Shloka PNG frames found:\n"
-                f"{shloka_frames_dir}"
-            )
+        TRANSITION_DURATION = 0.5
 
         Logger.info(
-            f"Scene 2 Shloka frames: "
-            f"{len(frame_files)}"
+            "Using smooth scene transitions:"
         )
 
         Logger.info(
-            f"First frame: "
-            f"{frame_files[0]}"
+            f"Crossfade duration : "
+            f"{TRANSITION_DURATION:.2f}s"
         )
 
-        # ======================================================
-        # NARRATION DURATION
-        # ======================================================
+        # ==========================================================
+        # GET SCENE DURATIONS
+        # ==========================================================
 
-        duration = (
-            self._audio_duration(
-                audio_file
-            )
-        )
+        durations = []
 
-        Logger.info(
-            f"Scene 2 duration : "
-            f"{duration:.3f}s"
-        )
+        for index, video in enumerate(
+            scene_videos,
+            start=1,
+        ):
 
-        # ======================================================
-        # CREATE ASS SUBTITLE FILE
-        # ======================================================
-
-        ass_file = (
-            output_file.parent
-            / "subtitles.ass"
-        )
-
-        if subtitle_file:
-
-            self._create_ass_subtitles(
-                subtitle_file,
-                ass_file,
-            )
-
-        # ======================================================
-        # ESCAPE ASS PATH
-        # ======================================================
-
-        ass_path = None
-
-        if subtitle_file:
-
-            ass_path = (
-                self._escape_filter_path(
-                    ass_file
+            duration = (
+                self._video_duration(
+                    video
                 )
             )
 
-        # ======================================================
-        # FFMPEG INPUTS
-        #
-        # 0 = composed image
-        # 1 = narration
-        # 2 = Shloka PNG sequence
-        # ======================================================
+            if duration <= 0:
+
+                raise ValueError(
+                    f"Could not determine duration "
+                    f"of Scene {index}:\n"
+                    f"{video}"
+                )
+
+            durations.append(
+                duration
+            )
+
+            Logger.info(
+                f"Scene {index} duration : "
+                f"{duration:.3f}s"
+            )
+
+        # ==========================================================
+        # SAFETY CHECK
+        # ==========================================================
+
+        for index, duration in enumerate(
+            durations,
+            start=1,
+        ):
+
+            if duration <= TRANSITION_DURATION:
+
+                raise ValueError(
+                    f"Scene {index} is only "
+                    f"{duration:.3f}s long, which is too short "
+                    f"for a {TRANSITION_DURATION:.3f}s transition."
+                )
+
+        # ==========================================================
+        # BUILD INPUTS
+        # ==========================================================
 
         command = [
 
             self.ffmpeg,
 
             "-hide_banner",
-
-            "-loglevel",
-            "error",
-
+            "-loglevel", "error",
             "-y",
-
-            # --------------------------------------------------
-            # INPUT 0
-            # Fixed composed image
-            # --------------------------------------------------
-
-            "-loop",
-            "1",
-
-            "-framerate",
-            str(FPS),
-
-            "-i",
-            str(image_file),
-
-            # --------------------------------------------------
-            # INPUT 1
-            # Narration
-            # --------------------------------------------------
-
-            "-i",
-            str(audio_file),
-
-            # --------------------------------------------------
-            # INPUT 2
-            # Shloka PNG sequence
-            #
-            # THIS IS THE IMPORTANT PART.
-            #
-            # We are using the original RGBA PNG frames,
-            # NOT the WebM.
-            # --------------------------------------------------
-
-            "-framerate",
-            str(FPS),
-
-            "-i",
-            str(frame_pattern),
         ]
 
-        # ======================================================
-        # FILTER GRAPH
-        # ======================================================
+        for video in scene_videos:
 
-        filters = []
-
-        # ------------------------------------------------------
-        # BASE IMAGE
-        #
-        # Make the composed image exactly 1080x1920.
-        # ------------------------------------------------------
-
-        filters.append(
-            "[0:v]"
-            f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:"
-            "force_original_aspect_ratio=increase,"
-            f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
-            "setsar=1,"
-            "format=rgba"
-            "[base]"
-        )
-
-        # ------------------------------------------------------
-        # SHLOKA PNG SEQUENCE
-        #
-        # PNGs are RGBA, so alpha is preserved directly.
-        # ------------------------------------------------------
-
-        filters.append(
-            "[2:v]"
-            f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:"
-            "force_original_aspect_ratio=disable,"
-            "format=rgba,"
-            "setpts=PTS-STARTPTS"
-            "[shloka]"
-        )
-
-        # ------------------------------------------------------
-        # OVERLAY
-        #
-        # This is equivalent to the command that you manually
-        # confirmed was working.
-        # ------------------------------------------------------
-
-        filters.append(
-            "[base]"
-            "[shloka]"
-            "overlay="
-            "x=0:"
-            "y=0:"
-            "eof_action=repeat:"
-            "shortest=0:"
-            "format=auto"
-            "[with_shloka]"
-        )
-
-        current = "[with_shloka]"
-
-        # ======================================================
-        # SUBTITLES
-        # ======================================================
-
-        if subtitle_file:
-
-            filters.append(
-                f"{current}"
-                f"ass='{ass_path}'"
-                "[with_subtitles]"
+            command.extend(
+                [
+                    "-i",
+                    str(video),
+                ]
             )
 
-            current = "[with_subtitles]"
+        # ==========================================================
+        # BUILD VIDEO XFADE FILTER
+        # ==========================================================
 
-        # ======================================================
-        # FINAL H.264 FORMAT
-        # ======================================================
+        filter_parts = []
 
-        filters.append(
-            f"{current}"
-            "format=yuv420p"
-            "[video]"
+        # First transition:
+        #
+        # Scene 1 duration = D1
+        #
+        # xfade starts at:
+        #
+        # D1 - transition
+        #
+        # Example:
+        #
+        # D1 = 10.0
+        # transition = 0.5
+        #
+        # offset = 9.5
+        # ==========================================================
+
+        current_video = "[0:v]"
+
+        accumulated_duration = durations[0]
+
+        for index in range(
+            1,
+            len(scene_videos),
+        ):
+
+            next_video = (
+                f"[{index}:v]"
+            )
+
+            output_label = (
+                f"[v{index}]"
+            )
+
+            offset = (
+                accumulated_duration
+                - TRANSITION_DURATION
+            )
+
+            filter_parts.append(
+                f"{current_video}"
+                f"{next_video}"
+                f"xfade="
+                f"transition=fade:"
+                f"duration={TRANSITION_DURATION:.3f}:"
+                f"offset={offset:.3f}"
+                f"{output_label}"
+            )
+
+            current_video = (
+                output_label
+            )
+
+            accumulated_duration = (
+                accumulated_duration
+                + durations[index]
+                - TRANSITION_DURATION
+            )
+
+        # ==========================================================
+        # BUILD AUDIO ACROSSFADE FILTER
+        # ==========================================================
+
+        current_audio = "[0:a]"
+
+        for index in range(
+            1,
+            len(scene_videos),
+        ):
+
+            next_audio = (
+                f"[{index}:a]"
+            )
+
+            output_label = (
+                f"[a{index}]"
+            )
+
+            filter_parts.append(
+                f"{current_audio}"
+                f"{next_audio}"
+                f"acrossfade="
+                f"d={TRANSITION_DURATION:.3f}:"
+                f"c1=tri:"
+                f"c2=tri"
+                f"{output_label}"
+            )
+
+            current_audio = (
+                output_label
+            )
+
+        # ==========================================================
+        # COMPLETE FILTER
+        # ==========================================================
+
+        filter_complex = (
+            ";".join(
+                filter_parts
+            )
         )
 
-        filter_complex = ";".join(
-            filters
-        )
-
-        # ======================================================
-        # OUTPUT OPTIONS
-        # ======================================================
+        # ==========================================================
+        # ADD FILTER
+        # ==========================================================
 
         command.extend(
             [
-
                 "-filter_complex",
                 filter_complex,
 
-                # ------------------------------------------------
-                # Video
-                # ------------------------------------------------
+                # --------------------------------------------------
+                # FINAL VIDEO
+                # --------------------------------------------------
 
                 "-map",
-                "[video]",
+                current_video,
 
-                # ------------------------------------------------
-                # Narration
-                # ------------------------------------------------
+                # --------------------------------------------------
+                # FINAL AUDIO
+                # --------------------------------------------------
 
                 "-map",
-                "1:a",
+                current_audio,
 
-                # ------------------------------------------------
-                # H.264
-                # ------------------------------------------------
+                # --------------------------------------------------
+                # VIDEO ENCODING
+                # --------------------------------------------------
 
                 "-c:v",
                 "libx264",
@@ -1246,12 +2326,9 @@ class VideoRenderer:
                 "-pix_fmt",
                 "yuv420p",
 
-                "-r",
-                str(FPS),
-
-                # ------------------------------------------------
-                # Audio
-                # ------------------------------------------------
+                # --------------------------------------------------
+                # AUDIO
+                # --------------------------------------------------
 
                 "-c:a",
                 "aac",
@@ -1262,16 +2339,9 @@ class VideoRenderer:
                 "-ar",
                 "48000",
 
-                # ------------------------------------------------
-                # Exact narration duration
-                # ------------------------------------------------
-
-                "-t",
-                f"{duration:.6f}",
-
-                # ------------------------------------------------
+                # --------------------------------------------------
                 # MP4
-                # ------------------------------------------------
+                # --------------------------------------------------
 
                 "-movflags",
                 "+faststart",
@@ -1280,371 +2350,76 @@ class VideoRenderer:
             ]
         )
 
-        # ======================================================
-        # PRINT COMMAND
-        # ======================================================
+        # ==========================================================
+        # PRINT
+        # ==========================================================
 
         self._print_command(
             command
         )
 
-        # ======================================================
-        # RENDER
-        # ======================================================
+        print()
+        print("=" * 80)
+        print("MERGING SCENES WITH SMOOTH TRANSITIONS")
+        print("=" * 80)
 
-        Logger.info(
-            "Rendering Scene 2 using "
-            "DIRECT RGBA PNG Shloka frames..."
+        for index, video in enumerate(
+            scene_videos,
+            start=1,
+        ):
+
+            print(
+                f"Scene {index}: {video}"
+            )
+
+        print(
+            f"Transition : "
+            f"{TRANSITION_DURATION:.2f}s crossfade"
         )
+
+        print(
+            f"Output     : {output_file}"
+        )
+
+        print("=" * 80)
+        print()
+
+        # ==========================================================
+        # RUN
+        # ==========================================================
 
         subprocess.run(
             command,
             check=True,
         )
 
-        # ======================================================
-        # VERIFY OUTPUT
-        # ======================================================
+        # ==========================================================
+        # VERIFY
+        # ==========================================================
 
         if not output_file.exists():
 
-            raise Exception(
-                "Scene 2 video was not created:\n"
+            raise RuntimeError(
+                "FFmpeg completed but merged video "
+                "was not created:\n"
                 f"{output_file}"
             )
 
         if output_file.stat().st_size <= 0:
 
-            raise Exception(
-                f"Scene 2 video is empty:\n"
+            raise RuntimeError(
+                "Merged video is empty:\n"
                 f"{output_file}"
             )
 
-        # ======================================================
-        # SUCCESS
-        # ======================================================
-
         Logger.success(
-            "Scene 2 video saved -> "
+            f"Merged video saved -> "
             f"{output_file}"
         )
 
-        Logger.success(
-            "Scene 2 composition -> "
-            "IMAGE + DIRECT RGBA PNG SHLOKA "
-            "+ SUBTITLES"
-        )
-
         return output_file
+
     
-    # ==========================================================
-    # MERGE SCENE VIDEOS
-    # ==========================================================
-
-    def merge_scenes(
-        self,
-        scene_videos,
-        output_folder,
-    ):
-        """
-        Concatenate independent scene videos.
-
-        Background music is added ONLY here.
-        """
-
-        if not scene_videos:
-
-            raise Exception(
-                "No scene videos supplied."
-            )
-
-        output_folder = Path(
-            output_folder
-        )
-
-        output_folder.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        final_folder = (
-            output_folder
-            / "final"
-        )
-
-        final_folder.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        output_file = (
-            final_folder
-            / "final_video.mp4"
-        )
-
-        # ------------------------------------------------------
-        # Validate scene videos
-        # ------------------------------------------------------
-
-        scene_videos = [
-
-            self._check_file(
-                video,
-                f"Scene video {index}",
-            )
-
-            for index, video
-            in enumerate(
-                scene_videos,
-                start=1,
-            )
-        ]
-
-        # ------------------------------------------------------
-        # Create concat list
-        # ------------------------------------------------------
-
-        concat_file = (
-            final_folder
-            / "scenes.txt"
-        )
-
-        with open(
-            concat_file,
-            "w",
-            encoding="utf-8",
-        ) as f:
-
-            for video in scene_videos:
-
-                video_path = (
-                    video
-                    .resolve()
-                    .as_posix()
-                )
-
-                video_path = (
-                    video_path.replace(
-                        "'",
-                        "'\\''",
-                    )
-                )
-
-                f.write(
-                    f"file '{video_path}'\n"
-                )
-
-        # ======================================================
-        # STEP 1 — CONCATENATE
-        # ======================================================
-
-        merged_video = (
-            final_folder
-            / "merged_video.mp4"
-        )
-
-        concat_command = [
-
-            self.ffmpeg,
-
-            "-y",
-
-            "-f",
-            "concat",
-
-            "-safe",
-            "0",
-
-            "-i",
-            str(concat_file),
-
-            "-c",
-            "copy",
-
-            "-movflags",
-            "+faststart",
-
-            str(merged_video),
-        ]
-
-        self._print_command(
-            concat_command
-        )
-
-        Logger.info(
-            "Merging scene videos..."
-        )
-
-        subprocess.run(
-            concat_command,
-            check=True,
-        )
-
-        if not merged_video.exists():
-
-            raise Exception(
-                "Merged video was not created."
-            )
-
-        # ======================================================
-        # STEP 2 — BACKGROUND MUSIC
-        # ======================================================
-
-        music_file = Path(
-            BACKGROUND_MUSIC
-        )
-
-        music_exists = (
-
-            music_file.exists()
-
-            and music_file.stat().st_size > 0
-
-        )
-
-        if music_exists:
-
-            Logger.info(
-                "Adding background music..."
-            )
-
-            music_volume = float(
-                BACKGROUND_MUSIC_VOLUME
-            )
-
-            music_command = [
-
-                self.ffmpeg,
-
-                "-y",
-
-                # ------------------------------------------------
-                # Narration video
-                # ------------------------------------------------
-
-                "-i",
-                str(merged_video),
-
-                # ------------------------------------------------
-                # Loop music
-                # ------------------------------------------------
-
-                "-stream_loop",
-                "-1",
-
-                "-i",
-                str(music_file),
-
-                # ------------------------------------------------
-                # Audio mix
-                # ------------------------------------------------
-
-                "-filter_complex",
-
-                (
-                    "[1:a]"
-                    f"volume={music_volume}"
-                    "[music];"
-
-                    "[0:a][music]"
-                    "amix="
-                    "inputs=2:"
-                    "duration=first:"
-                    "dropout_transition=2"
-                    "[aout]"
-                ),
-
-                # ------------------------------------------------
-                # Video
-                # ------------------------------------------------
-
-                "-map",
-                "0:v",
-
-                # ------------------------------------------------
-                # Mixed audio
-                # ------------------------------------------------
-
-                "-map",
-                "[aout]",
-
-                "-c:v",
-                "copy",
-
-                "-c:a",
-                "aac",
-
-                "-b:a",
-                "192k",
-
-                "-ar",
-                "48000",
-
-                "-movflags",
-                "+faststart",
-
-                str(output_file),
-            ]
-
-            self._print_command(
-                music_command
-            )
-
-            subprocess.run(
-                music_command,
-                check=True,
-            )
-
-        else:
-
-            Logger.info(
-                "Background music not found."
-            )
-
-            merged_video.replace(
-                output_file
-            )
-
-        # ------------------------------------------------------
-        # Verify final
-        # ------------------------------------------------------
-
-        if not output_file.exists():
-
-            raise Exception(
-                "Final video was not created."
-            )
-
-        if output_file.stat().st_size <= 0:
-
-            raise Exception(
-                "Final video is empty."
-            )
-
-        Logger.success(
-            f"Final video saved -> "
-            f"{output_file}"
-        )
-
-        Logger.success(
-            "Scene subtitles -> "
-            "STYLED / BURNED IN"
-        )
-
-        if music_exists:
-
-            Logger.success(
-                "Background music -> ON"
-            )
-
-        else:
-
-            Logger.info(
-                "Background music -> OFF"
-            )
-
-        return output_file
-
     # ==========================================================
     # RENDER COMPLETE VERSE
     # ==========================================================
@@ -2063,28 +2838,3 @@ class VideoRenderer:
 
         return scene_data
 
-# ==========================================================
-# SCENE 2 CONVENIENCE FUNCTION
-# ==========================================================
-
-def render_scene_2(
-    image_file: str,
-    audio_file: str,
-    subtitle_file: Optional[str] = None,
-    shloka_overlay: Optional[str] = None,
-) -> str:
-
-    renderer = VideoRenderer()
-
-    return str(
-        renderer.render_scene_2(
-            image_file=image_file,
-            audio_file=audio_file,
-            subtitle_file=subtitle_file,
-            shloka_overlay=shloka_overlay,
-            output_file=(
-                Path(image_file).parent
-                / "scene_video.mp4"
-            ),
-        )
-    )

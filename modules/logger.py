@@ -3,6 +3,8 @@ from datetime import datetime
 
 class Logger:
 
+    INFO_ONLY = True
+
     @staticmethod
     def _timestamp():
         return datetime.now().strftime("%H:%M:%S")
@@ -24,8 +26,10 @@ class Logger:
         print(f"[{Logger._timestamp()}] ✗ {message}")
 
     @staticmethod
-    def section(title):
+    def section(message):
+        if Logger.INFO_ONLY:
+            return
         print()
         print("=" * 80)
-        print(f"[{Logger._timestamp()}] {title}")
+        print(message)
         print("=" * 80)

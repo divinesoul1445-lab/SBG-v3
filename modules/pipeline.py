@@ -88,9 +88,6 @@ from modules.tts import TTSGenerator
 from modules.subtitles import SubtitleGenerator
 from modules.videos import VideoRenderer
 from modules.scene_composer import SceneComposer
-from modules.shloka_highlighter import (
-    create_shloka_overlay_from_narration,
-)
 
 class Pipeline:
 
@@ -404,17 +401,20 @@ class Pipeline:
         chapter,
         verse,
     ):
-
         """
         Convert the fixed source images into the polished
         scene images used by the video renderer.
 
-        Input:
+        Scene 1:
+            No Shloka text.
 
+        Scenes 2-4:
+            Shloka text enabled.
+
+        Input:
             assets/images/SceneX.jpeg
 
         Output:
-
             output/chapter_001/verse_001/sceneX/
                 composed_image.png
         """
@@ -456,6 +456,26 @@ class Pipeline:
                 f"Output image : {output_file}"
             )
 
+            # ==================================================
+            # SHLOKA DISPLAY RULE
+            # ==================================================
+            #
+            # Scene 1 -> NO SHLOKA
+            # Scene 2 -> SHLOKA
+            # Scene 3 -> SHLOKA
+            # Scene 4 -> SHLOKA
+            #
+            # ==================================================
+
+            show_shloka = (
+                index == 2
+            )
+
+            Logger.info(
+                f"Scene {index} Shloka : "
+                f"{'ON' if show_shloka else 'OFF'}"
+            )
+
             composed_image = (
                 self.scene_composer.compose(
                     image_file=source_image,
@@ -464,7 +484,7 @@ class Pipeline:
                     chapter=chapter,
                     verse=verse,
                     scene_number=index,
-                    show_shloka=False,
+                    show_shloka=show_shloka,
                 )
             )
 
@@ -669,6 +689,41 @@ class Pipeline:
         )
 
     # ==========================================================
+    # CHECK FILE
+    # ==========================================================
+
+    def _check_file(
+        self,
+        file_path,
+        description="File",
+    ):
+        """
+        Validate that a required file exists and is not empty.
+        """
+
+        file_path = Path(file_path)
+
+        if not file_path.exists():
+            raise FileNotFoundError(
+                f"{description} was not found:\n"
+                f"{file_path}"
+            )
+
+        if not file_path.is_file():
+            raise Exception(
+                f"{description} is not a file:\n"
+                f"{file_path}"
+            )
+
+        if file_path.stat().st_size <= 0:
+            raise Exception(
+                f"{description} is empty (0 bytes):\n"
+                f"{file_path}"
+            )
+
+        return file_path
+
+    # ==========================================================
     # MAIN PIPELINE
     # ==========================================================
 
@@ -838,221 +893,154 @@ class Pipeline:
                 "Expected exactly 4 subtitle files."
             )
 
+
         # ======================================================
-        # 8. RENDER SCENE 2 VIDEO
+        # 8. RENDER ALL 4 SCENE VIDEOS
         #
-        # CURRENT TEST:
+        # SAME RENDERER FOR ALL SCENES
         #
-        # Scene 2 uses:
+        # image
+        #   +
+        # narration.mp3
+        #   +
+        # narration.json
+        #   ↓
+        # render_scene()
         #
-        #   composed_image.png
-        #   narration.mp3
-        #   subtitles.srt
-        #   narration.json
-        #   shloka_overlay.webm
-        #
-        # Output:
-        #
-        #   scene2/scene_video.mp4
+        # narration.json is the timing source of truth.
         # ======================================================
 
         scene_videos = []
 
-        # ------------------------------------------------------
-        # Scene 2
-        # ------------------------------------------------------
+        for index in range(1, 5):
 
-        index = 2
+            print()
+            print("=" * 80)
+            print(f"RENDERING SCENE {index} / 4")
+            print("=" * 80)
 
-        scene_folder = (
-            self._scene_output_folder(
+            scene_folder = self._scene_output_folder(
                 verse_folder,
                 index,
             )
-        )
 
-        scene_video = (
-            scene_folder
-            / "scene_video.mp4"
-        )
+            # --------------------------------------------------
+            # Input files
+            # --------------------------------------------------
 
-        composed_image = (
-            composed_image_files[
-                index - 1
-            ]
-        )
-
-        audio_file = (
-            audio_files[
-                index - 1
-            ]
-        )
-
-        subtitle_file = (
-            subtitle_files[
-                index - 1
-            ]
-        )
-
-        # ------------------------------------------------------
-        # Scene 2 narration timing JSON
-        # ------------------------------------------------------
-
-        narration_json = (
-            scene_folder
-            / "narration.json"
-        )
-
-        if not narration_json.exists():
-
-            raise FileNotFoundError(
-                "Scene 2 narration.json was not found:\n"
-                f"{narration_json}\n\n"
-                "The Shloka highlighter requires "
-                "the word-level narration timings."
+            composed_image = Path(
+                composed_image_files[index - 1]
             )
 
-        Logger.success(
-            f"Scene 2 narration JSON : "
-            f"{narration_json}"
-        )
-
-        # ------------------------------------------------------
-        # Generate Shloka karaoke overlay
-        # ------------------------------------------------------
-
-        shloka_overlay = (
-            scene_folder
-            / "shloka_overlay.webm"
-        )
-
-        self._run_step(
-            "Generating Scene 2 Shloka highlight...",
-            create_shloka_overlay_from_narration,
-            str(shloka),
-            str(narration_json),
-            str(shloka_overlay),
-        )
-
-        if not shloka_overlay.exists():
-
-            raise FileNotFoundError(
-                "Scene 2 Shloka overlay "
-                "was not created:\n"
-                f"{shloka_overlay}"
+            audio_file = Path(
+                audio_files[index - 1]
             )
 
-        if shloka_overlay.stat().st_size <= 0:
-
-            raise Exception(
-                "Scene 2 Shloka overlay "
-                "is empty:\n"
-                f"{shloka_overlay}"
+            subtitle_file = Path(
+                subtitle_files[index - 1]
             )
 
-        Logger.success(
-            f"Scene 2 Shloka overlay : "
-            f"{shloka_overlay}"
-        )
+            narration_json = (
+                scene_folder
+                / "narration.json"
+            )
 
-        # ------------------------------------------------------
-        # Render Scene 2
-        # ------------------------------------------------------
+            # --------------------------------------------------
+            # Validate
+            # --------------------------------------------------
 
-        scene_video = self._run_step(
-            "Rendering Scene 2 video...",
-            self.video.render_scene_2,
-            str(composed_image),
-            str(audio_file),
-            str(subtitle_file),
-            str(shloka_overlay),
-            str(scene_video),
-        )
+            if not composed_image.exists():
 
-        scene_video = Path(
-            scene_video
-        )
+                raise FileNotFoundError(
+                    f"Scene {index} composed image "
+                    f"was not found:\n"
+                    f"{composed_image}"
+                )
 
-        # ------------------------------------------------------
-        # Validate
-        # ------------------------------------------------------
+            if not audio_file.exists():
 
-        if not scene_video.exists():
+                raise FileNotFoundError(
+                    f"Scene {index} audio "
+                    f"was not found:\n"
+                    f"{audio_file}"
+                )
 
-            raise FileNotFoundError(
-                "Scene 2 video was not created:\n"
+            if not narration_json.exists():
+
+                raise FileNotFoundError(
+                    f"Scene {index} narration.json "
+                    f"was not found:\n"
+                    f"{narration_json}"
+                )
+
+            # --------------------------------------------------
+            # Output
+            # --------------------------------------------------
+
+            scene_video = (
+                scene_folder
+                / "scene_video.mp4"
+            )
+
+            # --------------------------------------------------
+            # Render
+            #
+            # SAME FUNCTION FOR EVERY SCENE
+            # --------------------------------------------------
+
+            scene_video = self._run_step(
+                f"Rendering Scene {index} video...",
+                self.video.render_scene,
+                str(composed_image),
+                str(audio_file),
+                str(subtitle_file),
+                str(narration_json),
+                str(scene_video),
+            )
+
+            scene_video = Path(
+                scene_video
+            )
+
+            # --------------------------------------------------
+            # Validate
+            # --------------------------------------------------
+
+            if not scene_video.exists():
+
+                raise FileNotFoundError(
+                    f"Scene {index} video was not created:\n"
+                    f"{scene_video}"
+                )
+
+            if scene_video.stat().st_size <= 0:
+
+                raise Exception(
+                    f"Scene {index} video is empty:\n"
+                    f"{scene_video}"
+                )
+
+            Logger.success(
+                f"Scene {index} video : "
                 f"{scene_video}"
             )
 
-        if scene_video.stat().st_size <= 0:
-
-            raise Exception(
-                "Scene 2 video is empty:\n"
-                f"{scene_video}"
+            scene_videos.append(
+                scene_video
             )
-
-        Logger.success(
-            f"Scene 2 video : "
-            f"{scene_video}"
-        )
-
-        # ------------------------------------------------------
-        # Keep list compatible with later pipeline code
-        # ------------------------------------------------------
-
-        scene_videos.append(
-            scene_video
-        )
-
         # ======================================================
         # 9. PRINT SCENE DURATIONS
         # ======================================================
-        # ======================================================
-        # 9. SCENE 2 TEST COMPLETE
-        # ======================================================
 
-        Logger.section(
-            "Scene 2 Test Complete"
-        )
-
-        Logger.success(
-            f"Scene 2 image : "
-            f"{composed_image}"
-        )
-
-        Logger.success(
-            f"Scene 2 audio : "
-            f"{audio_file}"
-        )
-
-        Logger.success(
-            f"Scene 2 subtitles : "
-            f"{subtitle_file}"
-        )
-
-        Logger.success(
-            f"Scene 2 narration JSON : "
-            f"{narration_json}"
-        )
-
-        Logger.success(
-            f"Scene 2 Shloka overlay : "
-            f"{shloka_overlay}"
-        )
-
-        Logger.success(
-            f"Scene 2 video : "
-            f"{scene_video}"
-        )
-
-        return True
-    
         self.video.print_scene_durations(
             audio_files
         )
 
         # ======================================================
-        # 10. MERGE ALL SCENE VIDEOS
+        # 10. MERGE ALL 4 SCENE VIDEOS
+        #
+        # Background music is added ONLY inside
+        # merge_scenes().
         # ======================================================
 
         video_file = self._run_step(
@@ -1079,6 +1067,11 @@ class Pipeline:
                 f"Final video is empty:\n"
                 f"{video_file}"
             )
+
+        Logger.success(
+            f"Final video : "
+            f"{video_file}"
+        )
 
         # ======================================================
         # 11. SAVE SCENE JSON FILES
@@ -1170,6 +1163,11 @@ class Pipeline:
             Logger.success(
                 f"Scene {index} video : "
                 f"{scene_videos[index - 1]}"
+            )
+
+            Logger.success(
+                f"Scene {index} Shloka overlay : "
+                f"{self._scene_output_folder(verse_folder, index) / 'shloka_overlay.webm'}"
             )
 
         Logger.success(

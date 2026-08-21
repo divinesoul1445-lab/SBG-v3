@@ -262,64 +262,6 @@ class TTSGenerator:
                 "TTS source contains no words."
             )
 
-        # ----------------------------------------------------
-        # DEBUG
-        # ----------------------------------------------------
-
-        print()
-
-        print(
-            "=" * 80
-        )
-
-        print(
-            "EDGE TTS INPUT"
-        )
-
-        print(
-            "=" * 80
-        )
-
-        print(
-            "Voice :",
-            voice,
-        )
-
-        print(
-            "Rate  :",
-            RATE,
-        )
-
-        print(
-            "Volume:",
-            VOLUME,
-        )
-
-        print(
-            "Text  :",
-            text,
-        )
-
-        print(
-            "Audio :",
-            output_file,
-        )
-
-        print(
-            "Timing:",
-            timing_file,
-        )
-
-        print(
-            "Words :",
-            len(source_words),
-        )
-
-        print(
-            "=" * 80
-        )
-
-        print()
 
         # ----------------------------------------------------
         # EDGE TTS
@@ -472,31 +414,31 @@ class TTSGenerator:
             raw_boundaries
         )
 
-        print()
+        # print()
 
-        print(
-            "=" * 80
-        )
+        # print(
+        #     "=" * 80
+        # )
 
-        print(
-            "WORD TIMING MAPPING"
-        )
+        # print(
+        #     "WORD TIMING MAPPING"
+        # )
 
-        print(
-            "=" * 80
-        )
+        # print(
+        #     "=" * 80
+        # )
 
-        print(
-            "Clean source words :",
-            source_count,
-        )
+        # print(
+        #     "Clean source words :",
+        #     source_count,
+        # )
 
-        print(
-            "Edge boundaries    :",
-            boundary_count,
-        )
+        # print(
+        #     "Edge boundaries    :",
+        #     boundary_count,
+        # )
 
-        print()
+        # print()
 
         word_boundaries = []
 
@@ -845,10 +787,10 @@ class TTSGenerator:
         # DEBUG SOURCE
         # ----------------------------------------------------
 
-        self._print_text_debug(
-            scene_number,
-            text,
-        )
+        # self._print_text_debug(
+        #     scene_number,
+        #     text,
+        # )
 
         # ----------------------------------------------------
         # Output files

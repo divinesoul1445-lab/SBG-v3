@@ -225,20 +225,20 @@ class ShlokaHighlighter:
             "words"
         ]
 
-        print(
-            "\n[ShlokaHighlighter] "
-            "Building real Shloka timings..."
-        )
+        # print(
+        #     "\n[ShlokaHighlighter] "
+        #     "Building real Shloka timings..."
+        # )
 
-        print(
-            f"Shloka words: "
-            f"{len(shloka_words)}"
-        )
+        # print(
+        #     f"Shloka words: "
+        #     f"{len(shloka_words)}"
+        # )
 
-        print(
-            f"Narration timing entries: "
-            f"{len(narration_words)}"
-        )
+        # print(
+        #     f"Narration timing entries: "
+        #     f"{len(narration_words)}"
+        # )
 
         result: List[WordTiming] = []
 
@@ -250,10 +250,12 @@ class ShlokaHighlighter:
 
         for entry in narration_words:
 
-            raw_text = entry.get(
-                "text",
-                "",
-            )
+            raw_text = str(
+                entry.get(
+                    "text",
+                    "",
+                )
+            ).strip()
 
             start = float(
                 entry["start"]
@@ -263,7 +265,27 @@ class ShlokaHighlighter:
                 entry["end"]
             )
 
-            # Remove punctuation and split grouped words
+            if not raw_text:
+                continue
+
+            # ------------------------------------------------
+            # Split the TTS narration token into Sanskrit words
+            #
+            # Examples:
+            #
+            #   "धर्मक्षेत्रे कुरुक्षेत्रे"
+            #       ->
+            #   ["धर्मक्षेत्रे", "कुरुक्षेत्रे"]
+            #
+            #   "। मामकाः"
+            #       ->
+            #   ["मामकाः"]
+            #
+            #   "सञ्जय ॥"
+            #       ->
+            #   ["सञ्जय"]
+            # ------------------------------------------------
+
             entry_words = self.split_shloka(
                 raw_text
             )
@@ -272,7 +294,8 @@ class ShlokaHighlighter:
                 continue
 
             # ------------------------------------------------
-            # Try to match this entry against the Shloka
+            # Match each TTS word against the next expected
+            # Shloka word.
             # ------------------------------------------------
 
             matched_words = []
@@ -282,6 +305,13 @@ class ShlokaHighlighter:
                 normalized = self.normalize_word(
                     word
                 )
+
+                if not normalized:
+                    continue
+
+                # ------------------------------------------------
+                # Normal sequential match
+                # ------------------------------------------------
 
                 if (
                     shloka_index
@@ -304,65 +334,78 @@ class ShlokaHighlighter:
 
                         shloka_index += 1
 
-                    else:
+                        continue
 
-                        # Try searching ahead.
-                        found = False
+                # ------------------------------------------------
+                # Recovery search.
+                #
+                # This allows punctuation / TTS tokenization
+                # differences without losing alignment.
+                # ------------------------------------------------
 
-                        for look_ahead in range(
-                            shloka_index,
-                            min(
-                                shloka_index + 5,
-                                len(shloka_words),
-                            ),
-                        ):
+                found = False
 
-                            candidate = (
-                                self.normalize_word(
-                                    shloka_words[
-                                        look_ahead
-                                    ]
-                                )
-                            )
+                for look_ahead in range(
+                    shloka_index,
+                    min(
+                        shloka_index + 5,
+                        len(shloka_words),
+                    ),
+                ):
 
-                            if normalized == candidate:
+                    candidate = self.normalize_word(
+                        shloka_words[
+                            look_ahead
+                        ]
+                    )
 
-                                print(
-                                    "[ShlokaHighlighter] "
-                                    f"Recovered alignment: "
-                                    f"{word} → "
-                                    f"{shloka_words[look_ahead]}"
-                                )
+                    if (
+                        normalized
+                        == candidate
+                    ):
 
-                                shloka_index = (
-                                    look_ahead + 1
-                                )
+                        print(
+                            "[ShlokaHighlighter] "
+                            "Recovered alignment: "
+                            f"{word} -> "
+                            f"{shloka_words[look_ahead]}"
+                        )
 
-                                matched_words.append(
-                                    shloka_words[
-                                        look_ahead
-                                    ]
-                                )
+                        shloka_index = (
+                            look_ahead + 1
+                        )
 
-                                found = True
-                                break
+                        matched_words.append(
+                            shloka_words[
+                                look_ahead
+                            ]
+                        )
 
-                        if not found:
+                        found = True
 
-                            print(
-                                "[ShlokaHighlighter] "
-                                f"Skipping narration word: "
-                                f"{word}"
-                            )
+                        break
 
-                else:
-                    break
+                if not found:
+
+                    print(
+                        "[ShlokaHighlighter] "
+                        f"Skipping narration word: "
+                        f"{word}"
+                    )
 
             if not matched_words:
                 continue
 
             # ------------------------------------------------
-            # Split combined timing
+            # Allocate the original TTS timing across all
+            # Shloka words contained in this narration entry.
+            #
+            # IMPORTANT:
+            #
+            # narration.json remains the source of truth.
+            #
+            # We are NOT creating new timing from audio.
+            # We are only dividing the existing TTS timing.
             # ------------------------------------------------
 
             if len(matched_words) == 1:
@@ -375,69 +418,82 @@ class ShlokaHighlighter:
                     )
                 )
 
-            else:
+                continue
 
-                # --------------------------------------------
-                # Proportional timing allocation
-                #
-                # Longer Sanskrit words receive slightly
-                # more of the combined timing.
-                # --------------------------------------------
+            # ------------------------------------------------
+            # Proportional timing.
+            #
+            # Longer Sanskrit words receive proportionally
+            # more of the TTS timing.
+            # ------------------------------------------------
 
-                lengths = [
+            lengths = []
+
+            for word in matched_words:
+
+                normalized_word = (
+                    self.normalize_word(
+                        word
+                    )
+                )
+
+                lengths.append(
                     max(
                         1,
                         len(
-                            self.normalize_word(
-                                word
-                            )
+                            normalized_word
                         ),
                     )
-                    for word in matched_words
-                ]
-
-                total_length = sum(
-                    lengths
                 )
 
-                current_time = start
+            total_length = sum(
+                lengths
+            )
 
-                total_duration = (
-                    end - start
-                )
+            total_duration = (
+                end - start
+            )
 
-                for i, word in enumerate(
-                    matched_words
+            current_time = start
+
+            for i, word in enumerate(
+                matched_words
+            ):
+
+                # Make the final word end EXACTLY at
+                # the narration timing end.
+                if (
+                    i
+                    == len(matched_words) - 1
                 ):
+
+                    word_end = end
+
+                else:
 
                     portion = (
                         lengths[i]
                         / total_length
                     )
 
-                    word_duration = (
-                        total_duration
-                        * portion
-                    )
-
-                    word_start = (
-                        current_time
-                    )
-
                     word_end = (
                         current_time
-                        + word_duration
-                    )
-
-                    result.append(
-                        WordTiming(
-                            word=word,
-                            start=word_start,
-                            end=word_end,
+                        + (
+                            total_duration
+                            * portion
                         )
                     )
 
-                    current_time = word_end
+                result.append(
+                    WordTiming(
+                        word=word,
+                        start=current_time,
+                        end=word_end,
+                    )
+                )
+
+                current_time = word_end
+
 
         # ----------------------------------------------------
         # Diagnostics
@@ -944,7 +1000,8 @@ class ShlokaHighlighter:
         command = [
             ffmpeg,
             "-y",
-
+            "-hide_banner",
+            "-loglevel", "error",
             # ------------------------------------------------
             # PNG sequence
             # ------------------------------------------------

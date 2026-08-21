@@ -1799,7 +1799,7 @@ class SceneComposer:
         # Only Scene 1 gets the full shloka panel by default.
         # =====================================================
 
-        show_shloka = scene_number in (1, 2)
+        # show_shloka = False
 
         if show_shloka and shloka:
 
