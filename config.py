@@ -183,8 +183,8 @@ FFPROBE_PATH = str(
 ASSET_IMAGE_DIR = ROOT_DIR / "assets" / "images"
 
 SCENE_IMAGES = {
-    1: ASSET_IMAGE_DIR / "Scene1-Starting.jpeg",
-    2: ASSET_IMAGE_DIR / "Scene2-KrishnatoArjun.jpeg",
-    3: ASSET_IMAGE_DIR / "Scene3-ArjuntoKrishna.jpeg",
-    4: ASSET_IMAGE_DIR / "Scene4-closing.jpeg",
+    1: ASSET_IMAGE_DIR / "Scene1-Starting.png",
+    2: ASSET_IMAGE_DIR / "Scene2-KrishnatoArjun.png",
+    3: ASSET_IMAGE_DIR / "Scene3-ArjuntoKrishna.png",
+    4: ASSET_IMAGE_DIR / "Scene4-closing.png",
 }

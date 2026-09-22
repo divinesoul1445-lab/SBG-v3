@@ -87,6 +87,36 @@ class VideoRenderer:
     SUBTITLE_MARGIN_R = 100
 
     # ==========================================================
+    # CINEMATIC SCENE EFFECTS
+    # ==========================================================
+
+    # Maximum zoom applied during a scene.
+    #
+    # 1.00 = no zoom
+    # 1.08 = 8% zoom
+    # 1.12 = 12% zoom
+    #
+    # Keep this subtle for Bhagavad Gita visuals.
+    EFFECT_ZOOM = 1.10
+
+    # Duration of the motion effect is the complete
+    # narration duration of the scene.
+
+    # Scene effect map:
+    #
+    # Scene 1 -> slow zoom in
+    # Scene 2 -> slow zoom out
+    # Scene 3 -> slow pan left -> right
+    # Scene 4 -> slow pan right -> left
+
+    SCENE_EFFECTS = {
+        1: "zoom_in",
+        2: "zoom_out",
+        3: "pan_left_right",
+        4: "pan_right_left",
+    }
+
+    # ==========================================================
     # INITIALIZE
     # ==========================================================
 
@@ -1645,6 +1675,185 @@ class VideoRenderer:
 
         return output_dir
 
+
+    # ==========================================================
+    # BUILD CINEMATIC MOTION FILTER
+    # ==========================================================
+
+    def _build_scene_motion_filter(
+        self,
+        scene_number,
+        duration,
+    ):
+        """
+        Build a subtle cinematic motion effect for a scene.
+
+        Effects:
+
+            Scene 1 -> slow zoom in
+            Scene 2 -> slow zoom out
+            Scene 3 -> slow pan left -> right
+            Scene 4 -> slow pan right -> left
+
+        The effect runs for the complete narration duration.
+
+        The source image remains unchanged on disk.
+        """
+
+        fps = FPS
+
+        total_frames = max(
+            1,
+            int(
+                round(
+                    duration * fps
+                )
+            ),
+        )
+
+        effect = self.SCENE_EFFECTS.get(
+            scene_number,
+            "zoom_in",
+        )
+
+        zoom = self.EFFECT_ZOOM
+
+        # ======================================================
+        # ZOOM IN
+        # ======================================================
+
+        if effect == "zoom_in":
+
+            Logger.info(
+                f"Scene {scene_number}: "
+                f"slow zoom-in effect "
+                f"({zoom:.2f}x)"
+            )
+
+            return (
+                f"scale="
+                f"'iw*("
+                f"1+({zoom - 1:.6f})*"
+                f"n/{max(1, total_frames - 1)}"
+                f")':"
+                f"'ih*("
+                f"1+({zoom - 1:.6f})*"
+                f"n/{max(1, total_frames - 1)}"
+                f")':"
+                f"eval=frame,"
+                f"crop="
+                f"{VIDEO_WIDTH}:"
+                f"{VIDEO_HEIGHT}:"
+                f"'(iw-{VIDEO_WIDTH})/2':"
+                f"'(ih-{VIDEO_HEIGHT})/2',"
+                f"fps={fps}"
+            )
+
+        # ======================================================
+        # ZOOM OUT
+        # ======================================================
+
+        if effect == "zoom_out":
+
+            Logger.info(
+                f"Scene {scene_number}: "
+                f"slow zoom-out effect "
+                f"({zoom:.2f}x -> 1.00x)"
+            )
+
+            return (
+                f"scale="
+                f"'iw*("
+                f"{zoom}-({zoom - 1:.6f})*"
+                f"n/{max(1, total_frames - 1)}"
+                f")':"
+                f"'ih*("
+                f"{zoom}-({zoom - 1:.6f})*"
+                f"n/{max(1, total_frames - 1)}"
+                f")':"
+                f"eval=frame,"
+                f"crop="
+                f"{VIDEO_WIDTH}:"
+                f"{VIDEO_HEIGHT}:"
+                f"'(iw-{VIDEO_WIDTH})/2':"
+                f"'(ih-{VIDEO_HEIGHT})/2',"
+                f"fps={fps}"
+            )
+
+        # ======================================================
+        # PAN LEFT -> RIGHT
+        # ======================================================
+
+        if effect == "pan_left_right":
+
+            Logger.info(
+                f"Scene {scene_number}: "
+                f"slow pan left -> right"
+            )
+
+            return (
+                f"scale="
+                f"{VIDEO_WIDTH + 180}:"
+                f"{VIDEO_HEIGHT + 180}:"
+                f"force_original_aspect_ratio=increase,"
+                f"crop="
+                f"{VIDEO_WIDTH}:"
+                f"{VIDEO_HEIGHT}:"
+                f"'(iw-{VIDEO_WIDTH})*"
+                f"n/{max(1, total_frames - 1)}':"
+                f"'(ih-{VIDEO_HEIGHT})/2',"
+                f"fps={fps}"
+            )
+
+        # ======================================================
+        # PAN RIGHT -> LEFT
+        # ======================================================
+
+        if effect == "pan_right_left":
+
+            Logger.info(
+                f"Scene {scene_number}: "
+                f"slow pan right -> left"
+            )
+
+            return (
+                f"scale="
+                f"{VIDEO_WIDTH + 180}:"
+                f"{VIDEO_HEIGHT + 180}:"
+                f"force_original_aspect_ratio=increase,"
+                f"crop="
+                f"{VIDEO_WIDTH}:"
+                f"{VIDEO_HEIGHT}:"
+                f"'(iw-{VIDEO_WIDTH})*"
+                f"(1-n/{max(1, total_frames - 1)})':"
+                f"'(ih-{VIDEO_HEIGHT})/2',"
+                f"fps={fps}"
+            )
+
+        # ======================================================
+        # FALLBACK
+        # ======================================================
+
+        Logger.info(
+            f"Scene {scene_number}: "
+            f"no motion effect"
+        )
+
+        return (
+            f"scale="
+            f"{VIDEO_WIDTH}:"
+            f"{VIDEO_HEIGHT}:"
+            f":"
+            f"force_original_aspect_ratio=decrease,"
+            f"pad="
+            f"{VIDEO_WIDTH}:"
+            f"{VIDEO_HEIGHT}:"
+            f"(ow-iw)/2:"
+            f"(oh-ih)/2,"
+            f"fps={fps}"
+        )
+
+
     # ==========================================================
     # RENDER ONE SCENE
     # ==========================================================
@@ -1656,6 +1865,7 @@ class VideoRenderer:
         subtitle_file=None,
         narration_json=None,
         output_file=None,
+        scene_number=1,
     ):
         """
         Render one scene using the generic transparent
@@ -1801,44 +2011,38 @@ class VideoRenderer:
         #
         # ======================================================
 
+        motion_filter = self._build_scene_motion_filter(
+            scene_number=1,
+            duration=duration,
+        )
+        
         video_filter = (
 
-            # ----------------------------------------------
-            # Background image
-            # ----------------------------------------------
+        # --------------------------------------------------
+        # Cinematic background motion
+        # --------------------------------------------------
 
-            f"[0:v]"
-            f"scale="
-            f"{VIDEO_WIDTH}:"
-            f"{VIDEO_HEIGHT}:"
-            f"force_original_aspect_ratio=decrease,"
-            f"pad="
-            f"{VIDEO_WIDTH}:"
-            f"{VIDEO_HEIGHT}:"
-            f"(ow-iw)/2:"
-            f"(oh-ih)/2,"
-            f"fps={FPS},"
-            f"format=rgba"
-            f"[bg];"
+        f"[0:v]"
+        f"{motion_filter},"
+        f"format=rgba"
+        f"[bg];"
 
-            # ----------------------------------------------
-            # Subtitle overlay
-            # ----------------------------------------------
+        # --------------------------------------------------
+        # Subtitle overlay
+        # --------------------------------------------------
 
-            f"[2:v]"
-            f"format=rgba"
-            f"[sub];"
+        f"[2:v]"
+        f"format=rgba"
+        f"[sub];"
 
-            # ----------------------------------------------
-            # Overlay
-            # ----------------------------------------------
+        # --------------------------------------------------
+        # Overlay subtitles
+        # --------------------------------------------------
 
-            f"[bg][sub]"
-            f"overlay="
-            f"0:0:"
-            f"shortest=1,"
-            f"format=yuv420p"
-            f"[v]"
+        f"[bg][sub]"
+        f"overlay=0:0,"
+        f"format=yuv420p"
+        f"[v]"
         )
 
         # ======================================================
@@ -2005,35 +2209,22 @@ class VideoRenderer:
         verse_folder,
     ):
         """
-        Merge the four independently rendered scene videos
-        using smooth video + audio crossfades.
+        Merge scene videos with smooth video/audio transitions
+        and add background music underneath narration.
 
-        Scene architecture:
+        Final structure:
 
             Scene 1
-                ↓
-            0.5s crossfade
-                ↓
+                +
             Scene 2
-                ↓
-            0.5s crossfade
-                ↓
+                +
             Scene 3
-                ↓
-            0.5s crossfade
-                ↓
+                +
             Scene 4
-
-        The individual scene videos already contain:
-
-            image
-            narration
-            subtitles
-            word highlighting
-
-        This function only joins them smoothly.
-
-        Background music is added later by the pipeline.
+                +
+            background music
+                ↓
+            merged_video.mp4
         """
 
         # ==========================================================
@@ -2056,18 +2247,49 @@ class VideoRenderer:
         ):
 
             if not video.exists():
-
                 raise FileNotFoundError(
                     f"Scene {index} video not found:\n"
                     f"{video}"
                 )
 
             if video.stat().st_size <= 0:
-
                 raise ValueError(
                     f"Scene {index} video is empty:\n"
                     f"{video}"
                 )
+
+        # ==========================================================
+        # BACKGROUND MUSIC
+        # ==========================================================
+
+        background_music = Path(
+            BACKGROUND_MUSIC
+        )
+
+        if not background_music.exists():
+            raise FileNotFoundError(
+                "Background music not found:\n"
+                f"{background_music}"
+            )
+
+        if background_music.stat().st_size <= 0:
+            raise ValueError(
+                f"Background music is empty:\n"
+                f"{background_music}"
+            )
+
+        music_volume = float(
+            BACKGROUND_MUSIC_VOLUME
+        )
+
+        Logger.info(
+            f"Background music : {background_music}"
+        )
+
+        Logger.info(
+            f"Background music volume : "
+            f"{music_volume:.2f}"
+        )
 
         # ==========================================================
         # OUTPUT
@@ -2093,7 +2315,7 @@ class VideoRenderer:
         )
 
         # ==========================================================
-        # TRANSITION SETTINGS
+        # TRANSITION
         # ==========================================================
 
         TRANSITION_DURATION = 0.5
@@ -2118,14 +2340,11 @@ class VideoRenderer:
             start=1,
         ):
 
-            duration = (
-                self._video_duration(
-                    video
-                )
+            duration = self._video_duration(
+                video
             )
 
             if duration <= 0:
-
                 raise ValueError(
                     f"Could not determine duration "
                     f"of Scene {index}:\n"
@@ -2145,21 +2364,48 @@ class VideoRenderer:
         # SAFETY CHECK
         # ==========================================================
 
-        for index, duration in enumerate(
-            durations,
-            start=1,
-        ):
+        if len(scene_videos) > 1:
 
-            if duration <= TRANSITION_DURATION:
+            for index, duration in enumerate(
+                durations,
+                start=1,
+            ):
 
-                raise ValueError(
-                    f"Scene {index} is only "
-                    f"{duration:.3f}s long, which is too short "
-                    f"for a {TRANSITION_DURATION:.3f}s transition."
-                )
+                if duration <= TRANSITION_DURATION:
+
+                    raise ValueError(
+                        f"Scene {index} is only "
+                        f"{duration:.3f}s long, which is too short "
+                        f"for a {TRANSITION_DURATION:.3f}s transition."
+                    )
 
         # ==========================================================
-        # BUILD INPUTS
+        # CALCULATE FINAL DURATION
+        # ==========================================================
+
+        accumulated_duration = durations[0]
+
+        for index in range(
+            1,
+            len(durations),
+        ):
+
+            accumulated_duration += (
+                durations[index]
+                - TRANSITION_DURATION
+            )
+
+        final_duration = (
+            accumulated_duration
+        )
+
+        Logger.info(
+            f"Final video duration : "
+            f"{final_duration:.3f}s"
+        )
+
+        # ==========================================================
+        # BUILD FFMPEG INPUTS
         # ==========================================================
 
         command = [
@@ -2167,9 +2413,14 @@ class VideoRenderer:
             self.ffmpeg,
 
             "-hide_banner",
-            "-loglevel", "error",
+            "-loglevel",
+            "error",
             "-y",
         ]
+
+        # ----------------------------------------------------------
+        # Scene inputs
+        # ----------------------------------------------------------
 
         for video in scene_videos:
 
@@ -2180,31 +2431,50 @@ class VideoRenderer:
                 ]
             )
 
+        # ----------------------------------------------------------
+        # Background music
+        #
+        # -stream_loop -1 keeps music running long enough.
+        # ----------------------------------------------------------
+
+        command.extend(
+            [
+                "-stream_loop",
+                "-1",
+
+                "-i",
+                str(background_music),
+            ]
+        )
+
+        # Music input index
+        #
+        # If there are 4 scenes:
+        #
+        # 0 = scene1
+        # 1 = scene2
+        # 2 = scene3
+        # 3 = scene4
+        # 4 = music
+        #
+        music_index = len(
+            scene_videos
+        )
+
         # ==========================================================
-        # BUILD VIDEO XFADE FILTER
+        # VIDEO XFADE
         # ==========================================================
 
         filter_parts = []
 
-        # First transition:
-        #
-        # Scene 1 duration = D1
-        #
-        # xfade starts at:
-        #
-        # D1 - transition
-        #
-        # Example:
-        #
-        # D1 = 10.0
-        # transition = 0.5
-        #
-        # offset = 9.5
-        # ==========================================================
-
+        # First video
         current_video = "[0:v]"
 
         accumulated_duration = durations[0]
+
+        # ----------------------------------------------------------
+        # Create video crossfades
+        # ----------------------------------------------------------
 
         for index in range(
             1,
@@ -2238,14 +2508,13 @@ class VideoRenderer:
                 output_label
             )
 
-            accumulated_duration = (
-                accumulated_duration
-                + durations[index]
+            accumulated_duration += (
+                durations[index]
                 - TRANSITION_DURATION
             )
 
         # ==========================================================
-        # BUILD AUDIO ACROSSFADE FILTER
+        # AUDIO CROSSFADE
         # ==========================================================
 
         current_audio = "[0:a]"
@@ -2278,6 +2547,33 @@ class VideoRenderer:
             )
 
         # ==========================================================
+        # BACKGROUND MUSIC
+        # ==========================================================
+
+        filter_parts.append(
+            f"[{music_index}:a]"
+            f"volume={music_volume:.3f},"
+            f"atrim=duration={final_duration:.6f},"
+            f"asetpts=N/SR/TB"
+            f"[music]"
+        )
+
+        # ==========================================================
+        # MIX NARRATION + MUSIC
+        # ==========================================================
+
+        filter_parts.append(
+            f"{current_audio}"
+            f"[music]"
+            f"amix="
+            f"inputs=2:"
+            f"duration=first:"
+            f"dropout_transition=0:"
+            f"normalize=0"
+            f"[aout]"
+        )
+
+        # ==========================================================
         # COMPLETE FILTER
         # ==========================================================
 
@@ -2288,7 +2584,7 @@ class VideoRenderer:
         )
 
         # ==========================================================
-        # ADD FILTER
+        # BUILD COMMAND
         # ==========================================================
 
         command.extend(
@@ -2297,18 +2593,18 @@ class VideoRenderer:
                 filter_complex,
 
                 # --------------------------------------------------
-                # FINAL VIDEO
+                # VIDEO
                 # --------------------------------------------------
 
                 "-map",
                 current_video,
 
                 # --------------------------------------------------
-                # FINAL AUDIO
+                # AUDIO
                 # --------------------------------------------------
 
                 "-map",
-                current_audio,
+                "[aout]",
 
                 # --------------------------------------------------
                 # VIDEO ENCODING
@@ -2340,6 +2636,13 @@ class VideoRenderer:
                 "48000",
 
                 # --------------------------------------------------
+                # EXACT FINAL DURATION
+                # --------------------------------------------------
+
+                "-t",
+                f"{final_duration:.6f}",
+
+                # --------------------------------------------------
                 # MP4
                 # --------------------------------------------------
 
@@ -2351,7 +2654,7 @@ class VideoRenderer:
         )
 
         # ==========================================================
-        # PRINT
+        # PRINT COMMAND
         # ==========================================================
 
         self._print_command(
@@ -2360,8 +2663,9 @@ class VideoRenderer:
 
         print()
         print("=" * 80)
-        print("MERGING SCENES WITH SMOOTH TRANSITIONS")
+        print("MERGING SCENES + BACKGROUND MUSIC")
         print("=" * 80)
+        print()
 
         for index, video in enumerate(
             scene_videos,
@@ -2372,20 +2676,38 @@ class VideoRenderer:
                 f"Scene {index}: {video}"
             )
 
+        print()
         print(
-            f"Transition : "
-            f"{TRANSITION_DURATION:.2f}s crossfade"
+            f"Transition       : "
+            f"{TRANSITION_DURATION:.2f}s"
         )
 
         print(
-            f"Output     : {output_file}"
+            f"Background music : "
+            f"{background_music}"
         )
 
+        print(
+            f"Music volume     : "
+            f"{music_volume:.2f}"
+        )
+
+        print(
+            f"Final duration   : "
+            f"{final_duration:.3f}s"
+        )
+
+        print(
+            f"Output           : "
+            f"{output_file}"
+        )
+
+        print()
         print("=" * 80)
         print()
 
         # ==========================================================
-        # RUN
+        # RUN FFMPEG
         # ==========================================================
 
         subprocess.run(
@@ -2418,7 +2740,6 @@ class VideoRenderer:
         )
 
         return output_file
-
     
     # ==========================================================
     # RENDER COMPLETE VERSE
@@ -2670,6 +2991,8 @@ class VideoRenderer:
                         audio_file=audio_file,
                         subtitle_file=subtitle_file,
                         output_file=output_file,
+                        scene_number=scene_number,
+
                     )
 
             else:
@@ -2679,6 +3002,8 @@ class VideoRenderer:
                     audio_file=audio_file,
                     subtitle_file=subtitle_file,
                     output_file=output_file,
+                    scene_number=scene_number,
+
                 )
 
             rendered = self._check_file(
@@ -2723,7 +3048,7 @@ class VideoRenderer:
 
             final_video = self.merge_scenes(
                 scene_videos=scene_videos,
-                output_folder=output_folder,
+                verse_folder=output_folder,
             )
 
         # ------------------------------------------------------
@@ -2838,3 +3163,180 @@ class VideoRenderer:
 
         return scene_data
 
+    def render_scene_2(
+        self,
+        image_file,
+        audio_file,
+        subtitle_file=None,
+        shloka_overlay=None,
+        output_file=None,
+        ):
+            """
+            Render Scene 2:
+            - composed image
+            - narration
+            - turquoise Shloka word highlighting directly over image
+            - normal subtitles
+            """
+
+            from pathlib import Path
+            import subprocess
+
+            image_file = Path(image_file)
+            audio_file = Path(audio_file)
+
+            if subtitle_file:
+                subtitle_file = Path(subtitle_file)
+
+            if shloka_overlay:
+                shloka_overlay = Path(shloka_overlay)
+
+            if output_file:
+                output_file = Path(output_file)
+            else:
+                output_file = image_file.parent / "scene_video.mp4"
+
+            for f in [image_file, audio_file]:
+                if not f.exists():
+                    raise FileNotFoundError(f"Missing file: {f}")
+
+            if subtitle_file and not subtitle_file.exists():
+                raise FileNotFoundError(
+                    f"Missing subtitle file: {subtitle_file}"
+                )
+
+            if shloka_overlay and not shloka_overlay.exists():
+                raise FileNotFoundError(
+                    f"Missing Shloka ASS file: {shloka_overlay}"
+                )
+
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+
+            # Get exact narration duration
+            probe = subprocess.run(
+                [
+                    str(FFPROBE_PATH),
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(audio_file),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            duration = float(probe.stdout.strip())
+
+            print(f"Scene 2 audio duration: {duration:.3f}s")
+
+            # Work from the scene directory so ASS paths are simple
+            scene_dir = image_file.parent
+
+            cmd = [
+                str(FFMPEG_PATH),
+                "-y",
+
+                "-loop", "1",
+                "-i", str(image_file),
+
+                "-i", str(audio_file),
+            ]
+
+            filters = []
+
+            # Base image
+            filters.append(
+                "[0:v]"
+                "scale=1080:1920:force_original_aspect_ratio=increase,"
+                "crop=1080:1920,"
+                "setsar=1"
+                "[base]"
+            )
+
+            current = "[base]"
+
+            # ---------------------------------------------------------
+            # SHLOKA — rendered DIRECTLY over the image
+            # ---------------------------------------------------------
+            if shloka_overlay:
+
+                shloka_name = shloka_overlay.name
+
+                filters.append(
+                    f"{current}"
+                    f"ass=filename='{shloka_name}'"
+                    "[shloka]"
+                )
+
+                current = "[shloka]"
+
+            # ---------------------------------------------------------
+            # NORMAL SUBTITLES
+            # ---------------------------------------------------------
+            if subtitle_file:
+
+                subtitle_name = subtitle_file.name
+
+                filters.append(
+                    f"{current}"
+                    f"subtitles=filename='{subtitle_name}'"
+                    "[subtitled]"
+                )
+
+                current = "[subtitled]"
+
+            filters.append(
+                f"{current}"
+                "format=yuv420p"
+                "[vout]"
+            )
+
+            filter_complex = ";".join(filters)
+
+            cmd += [
+                "-filter_complex",
+                filter_complex,
+
+                "-map", "[vout]",
+                "-map", "1:a",
+
+                "-c:v", "libx264",
+                "-preset", "medium",
+                "-crf", "18",
+
+                "-c:a", "aac",
+                "-b:a", "192k",
+
+                "-t", str(duration),
+
+                "-movflags", "+faststart",
+
+                str(output_file),
+            ]
+
+            print("\n========================================")
+            print("RENDERING SCENE 2")
+            print("========================================")
+            print(f"Image:    {image_file}")
+            print(f"Audio:    {audio_file}")
+            print(f"Shloka:   {shloka_overlay}")
+            print(f"Subtitle: {subtitle_file}")
+            print(f"Output:   {output_file}")
+            print("========================================\n")
+
+            subprocess.run(
+                cmd,
+                cwd=str(scene_dir),
+                check=True,
+            )
+
+            print("\n========================================")
+            print("SCENE 2 RENDERED SUCCESSFULLY")
+            print("========================================")
+            print(output_file)
+
+            return output_file
