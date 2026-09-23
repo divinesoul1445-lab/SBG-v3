@@ -8,12 +8,16 @@ from pathlib import Path
 
 BASE = Path(r"C:\SBG\SBG-v4")
 
+import sys
+
+SCENE_NUMBER = int(sys.argv[1]) if len(sys.argv) > 1 else 2
+
 SCENE = (
     BASE
     / "output"
     / "chapter_001"
     / "verse_001"
-    / "scene2"
+    / f"scene{SCENE_NUMBER}"
 )
 
 JSON_FILE = SCENE / "narration.json"

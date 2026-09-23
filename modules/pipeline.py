@@ -88,6 +88,7 @@ from modules.tts import TTSGenerator
 from modules.subtitles import SubtitleGenerator
 from modules.videos import VideoRenderer
 from modules.scene_composer import SceneComposer
+from modules.shloka_highlighter import create_shloka_overlay_from_narration
 
 class Pipeline:
 
@@ -988,15 +989,83 @@ class Pipeline:
             # SAME FUNCTION FOR EVERY SCENE
             # --------------------------------------------------
 
-            scene_video = self._run_step(
-                f"Rendering Scene {index} video...",
-                self.video.render_scene,
-                str(composed_image),
-                str(audio_file),
-                str(subtitle_file),
-                str(narration_json),
-                str(scene_video),
-            )
+            # --------------------------------------------------
+            # Scene 2 Shloka highlight overlay
+            # --------------------------------------------------
+
+            shloka_overlay = None
+
+            if index == 2:
+
+                shloka_overlay = (
+                    scene_folder
+                    / "shloka_overlay.mov"
+                )
+
+                Logger.info(
+                    "Generating Scene 2 Shloka highlight overlay..."
+                )
+
+                self._run_step(
+                    "Generating Scene 2 Shloka overlay...",
+                    create_shloka_overlay_from_narration,
+                    str(shloka).strip(),
+                    str(narration_json),
+                    str(shloka_overlay),
+                )
+
+                if not shloka_overlay.exists():
+
+                    raise FileNotFoundError(
+                        "Scene 2 Shloka overlay "
+                        "was not created:\n"
+                        f"{shloka_overlay}"
+                    )
+
+                if shloka_overlay.stat().st_size <= 0:
+
+                    raise Exception(
+                        "Scene 2 Shloka overlay is empty:\n"
+                        f"{shloka_overlay}"
+                    )
+
+                Logger.success(
+                    f"Scene 2 Shloka overlay : "
+                    f"{shloka_overlay}"
+                )
+
+
+            # --------------------------------------------------
+            # Render
+            # --------------------------------------------------
+
+            if index == 2:
+
+                scene_video = self._run_step(
+                    "Rendering Scene 2 video...",
+                    self.video.render_scene_2,
+                    str(composed_image),
+                    str(audio_file),
+                    (
+                            None
+                            if index == 2
+                            else subtitle_file
+                    ),
+                    str(shloka_overlay),
+                    str(scene_video),
+                )
+
+            else:
+
+                scene_video = self._run_step(
+                    f"Rendering Scene {index} video...",
+                    self.video.render_scene,
+                    str(composed_image),
+                    str(audio_file),
+                    str(subtitle_file),
+                    str(narration_json),
+                    str(scene_video),
+                )
 
             scene_video = Path(
                 scene_video
@@ -1167,7 +1236,7 @@ class Pipeline:
 
             Logger.success(
                 f"Scene {index} Shloka overlay : "
-                f"{self._scene_output_folder(verse_folder, index) / 'shloka_overlay.webm'}"
+                f"{self._scene_output_folder(verse_folder, index) / 'shloka_overlay.mov'}"
             )
 
         Logger.success(

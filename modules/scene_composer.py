@@ -517,77 +517,12 @@ class SceneComposer:
         )
 
         # =====================================================
-        # DRAW SHLOKA
+        # STATIC SHLOKA TEXT DISABLED
         # =====================================================
-
-        for index, line in enumerate(
-            lines
-        ):
-
-            bbox = draw.textbbox(
-                (0, 0),
-                line,
-                font=font,
-            )
-
-            text_width = (
-                bbox[2] - bbox[0]
-            )
-
-            x = (
-                self.WIDTH
-                - text_width
-            ) // 2
-
-            # -------------------------------------------------
-            # Shadow
-            # -------------------------------------------------
-
-            draw.text(
-                (
-                    x + 2,
-                    current_y + 3,
-                ),
-                line,
-                font=font,
-                fill=(
-                    0,
-                    0,
-                    0,
-                    190,
-                ),
-            )
-
-            # -------------------------------------------------
-            # Main text
-            # -------------------------------------------------
-
-            draw.text(
-                (
-                    x,
-                    current_y,
-                ),
-                line,
-                font=font,
-                fill=(
-                    255,
-                    238,
-                    190,
-                    255,
-                ),
-                stroke_width=1,
-                stroke_fill=(
-                    45,
-                    20,
-                    5,
-                    220,
-                ),
-            )
-
-            current_y += (
-                line_heights[index]
-                + line_spacing
-            )
+        #
+        # The panel remains visible.
+        # The animated turquoise Shloka overlay is added later.
+        #
 
         return image
     
@@ -1295,116 +1230,10 @@ class SceneComposer:
         #
         # =====================================================
 
-        if mode == "fit":
+        
 
-            # Create blurred background
-            background = image.copy()
-
-            # Scale background to completely fill
-            # the 1080x1920 canvas.
-            background_ratio = (
-                self.WIDTH / self.HEIGHT
-            )
-
-            if background.width / background.height > background_ratio:
-
-                bg_height = self.HEIGHT
-
-                bg_width = int(
-                    bg_height
-                    * background.width
-                    / background.height
-                )
-
-            else:
-
-                bg_width = self.WIDTH
-
-                bg_height = int(
-                    bg_width
-                    * background.height
-                    / background.width
-                )
-
-            background = background.resize(
-                (
-                    bg_width,
-                    bg_height,
-                ),
-                Image.Resampling.LANCZOS,
-            )
-
-            # Center crop background
-            left = max(
-                0,
-                (bg_width - self.WIDTH) // 2,
-            )
-
-            top = max(
-                0,
-                (bg_height - self.HEIGHT) // 2,
-            )
-
-            background = background.crop(
-                (
-                    left,
-                    top,
-                    left + self.WIDTH,
-                    top + self.HEIGHT,
-                )
-            )
-
-            # Blur background
-            from PIL import ImageFilter
-
-            background = background.filter(
-                ImageFilter.GaussianBlur(
-                    radius=30
-                )
-            )
-
-            # Slightly darken background
-            from PIL import ImageEnhance
-
-            background = ImageEnhance.Brightness(
-                background
-            ).enhance(0.45)
-
-            # =================================================
-            # Foreground - preserve COMPLETE image
-            # =================================================
-
-            foreground = image.copy()
-
-            foreground.thumbnail(
-                (
-                    self.WIDTH,
-                    self.HEIGHT,
-                ),
-                Image.Resampling.LANCZOS,
-            )
-
-            # Center foreground
-            x = (
-                self.WIDTH
-                - foreground.width
-            ) // 2
-
-            y = (
-                self.HEIGHT
-                - foreground.height
-            ) // 2
-
-            background.paste(
-                foreground,
-                (
-                    x,
-                    y,
-                ),
-            )
-
-            return background
-
+        
+        
         # =====================================================
         # CROP MODE
         # =====================================================

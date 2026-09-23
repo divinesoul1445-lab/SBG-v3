@@ -53,7 +53,7 @@ class VideoRenderer:
     # Large enough for 1080x1920 Shorts
     SUBTITLE_FONT = "Noto Sans Devanagari"
 
-    SUBTITLE_FONT_SIZE = 54
+    SUBTITLE_FONT_SIZE = 50
 
     SUBTITLE_BOLD = True
 
@@ -1680,24 +1680,25 @@ class VideoRenderer:
     # BUILD CINEMATIC MOTION FILTER
     # ==========================================================
 
+    # ==========================================================
+    # BUILD CINEMATIC MOTION FILTER
+    # ==========================================================
+
     def _build_scene_motion_filter(
         self,
         scene_number,
         duration,
     ):
         """
-        Build a subtle cinematic motion effect for a scene.
+        Build a cinematic motion effect while ALWAYS filling
+        the complete 1080x1920 Shorts frame.
 
-        Effects:
+        Scene 1 -> slow zoom in
+        Scene 2 -> slow zoom out
+        Scene 3 -> slow pan left -> right
+        Scene 4 -> slow pan right -> left
 
-            Scene 1 -> slow zoom in
-            Scene 2 -> slow zoom out
-            Scene 3 -> slow pan left -> right
-            Scene 4 -> slow pan right -> left
-
-        The effect runs for the complete narration duration.
-
-        The source image remains unchanged on disk.
+        No black borders are permitted.
         """
 
         fps = FPS
@@ -1718,71 +1719,49 @@ class VideoRenderer:
 
         zoom = self.EFFECT_ZOOM
 
-        # ======================================================
+        frames = max(
+            1,
+            total_frames - 1,
+        )
+
+        # ==========================================================
         # ZOOM IN
-        # ======================================================
+        # ==========================================================
 
         if effect == "zoom_in":
 
             Logger.info(
-                f"Scene {scene_number}: "
-                f"slow zoom-in effect "
-                f"({zoom:.2f}x)"
+                f"Scene {scene_number}: static frame"
             )
 
             return (
                 f"scale="
-                f"'iw*("
-                f"1+({zoom - 1:.6f})*"
-                f"n/{max(1, total_frames - 1)}"
-                f")':"
-                f"'ih*("
-                f"1+({zoom - 1:.6f})*"
-                f"n/{max(1, total_frames - 1)}"
-                f")':"
-                f"eval=frame,"
-                f"crop="
                 f"{VIDEO_WIDTH}:"
-                f"{VIDEO_HEIGHT}:"
-                f"'(iw-{VIDEO_WIDTH})/2':"
-                f"'(ih-{VIDEO_HEIGHT})/2',"
+                f"{VIDEO_HEIGHT},"
                 f"fps={fps}"
             )
 
-        # ======================================================
+
+        # ==========================================================
         # ZOOM OUT
-        # ======================================================
+        # ==========================================================
 
         if effect == "zoom_out":
 
             Logger.info(
-                f"Scene {scene_number}: "
-                f"slow zoom-out effect "
-                f"({zoom:.2f}x -> 1.00x)"
+                f"Scene {scene_number}: static frame"
             )
 
             return (
                 f"scale="
-                f"'iw*("
-                f"{zoom}-({zoom - 1:.6f})*"
-                f"n/{max(1, total_frames - 1)}"
-                f")':"
-                f"'ih*("
-                f"{zoom}-({zoom - 1:.6f})*"
-                f"n/{max(1, total_frames - 1)}"
-                f")':"
-                f"eval=frame,"
-                f"crop="
                 f"{VIDEO_WIDTH}:"
-                f"{VIDEO_HEIGHT}:"
-                f"'(iw-{VIDEO_WIDTH})/2':"
-                f"'(ih-{VIDEO_HEIGHT})/2',"
+                f"{VIDEO_HEIGHT},"
                 f"fps={fps}"
             )
 
-        # ======================================================
+        # ==========================================================
         # PAN LEFT -> RIGHT
-        # ======================================================
+        # ==========================================================
 
         if effect == "pan_left_right":
 
@@ -1791,23 +1770,55 @@ class VideoRenderer:
                 f"slow pan left -> right"
             )
 
+            # --------------------------------------------------
+            # IMPORTANT:
+            # Scene 3 must NEVER crop vertically.
+            #
+            # The composed image is already 1080x1920.
+            # Add overscan ONLY horizontally so the complete
+            # vertical composition, including the title, remains
+            # visible throughout the animation.
+            # --------------------------------------------------
+
+            overscan = 180
+
+            work_width = (
+                VIDEO_WIDTH + overscan
+            )
+
+            work_height = VIDEO_HEIGHT
+
             return (
+                # Scale to the horizontal overscan canvas while
+                # preserving the original aspect ratio.
                 f"scale="
-                f"{VIDEO_WIDTH + 180}:"
-                f"{VIDEO_HEIGHT + 180}:"
+                f"{work_width}:"
+                f"{work_height}:"
                 f"force_original_aspect_ratio=increase,"
+
+                # Center-crop ONLY horizontally.
+                # Vertical position is locked to 0.
+                f"crop="
+                f"{work_width}:"
+                f"{work_height}:"
+                f"'(iw-{work_width})/2':"
+                f"0,"
+
+                # Horizontal left -> right movement.
+                # Vertical crop is always zero.
                 f"crop="
                 f"{VIDEO_WIDTH}:"
                 f"{VIDEO_HEIGHT}:"
                 f"'(iw-{VIDEO_WIDTH})*"
-                f"n/{max(1, total_frames - 1)}':"
-                f"'(ih-{VIDEO_HEIGHT})/2',"
+                f"n/{frames}':"
+                f"0,"
+
                 f"fps={fps}"
             )
 
-        # ======================================================
+        # ==========================================================
         # PAN RIGHT -> LEFT
-        # ======================================================
+        # ==========================================================
 
         if effect == "pan_right_left":
 
@@ -1816,23 +1827,39 @@ class VideoRenderer:
                 f"slow pan right -> left"
             )
 
+            overscan = 180
+
+            work_width = (
+                VIDEO_WIDTH + overscan
+            )
+
+            work_height = VIDEO_HEIGHT
+
             return (
                 f"scale="
-                f"{VIDEO_WIDTH + 180}:"
-                f"{VIDEO_HEIGHT + 180}:"
+                f"{work_width}:"
+                f"{work_height}:"
                 f"force_original_aspect_ratio=increase,"
+
+                f"crop="
+                f"{work_width}:"
+                f"{work_height}:"
+                f"'(iw-{work_width})/2':"
+                f"'0',"
+
                 f"crop="
                 f"{VIDEO_WIDTH}:"
                 f"{VIDEO_HEIGHT}:"
                 f"'(iw-{VIDEO_WIDTH})*"
-                f"(1-n/{max(1, total_frames - 1)})':"
-                f"'(ih-{VIDEO_HEIGHT})/2',"
+                f"(1-n/{frames})':"
+                f"'0',"
+
                 f"fps={fps}"
             )
 
-        # ======================================================
+        # ==========================================================
         # FALLBACK
-        # ======================================================
+        # ==========================================================
 
         Logger.info(
             f"Scene {scene_number}: "
@@ -1843,13 +1870,12 @@ class VideoRenderer:
             f"scale="
             f"{VIDEO_WIDTH}:"
             f"{VIDEO_HEIGHT}:"
-            f":"
-            f"force_original_aspect_ratio=decrease,"
-            f"pad="
+            f"force_original_aspect_ratio=increase,"
+            f"crop="
             f"{VIDEO_WIDTH}:"
             f"{VIDEO_HEIGHT}:"
-            f"(ow-iw)/2:"
-            f"(oh-ih)/2,"
+            f"'(iw-{VIDEO_WIDTH})/2':"
+            f"'(ih-{VIDEO_HEIGHT})/2',"
             f"fps={fps}"
         )
 
@@ -2012,7 +2038,7 @@ class VideoRenderer:
         # ======================================================
 
         motion_filter = self._build_scene_motion_filter(
-            scene_number=1,
+            scene_number=scene_number,
             duration=duration,
         )
         
@@ -2461,14 +2487,34 @@ class VideoRenderer:
             scene_videos
         )
 
-        # ==========================================================
+                # ==========================================================
         # VIDEO XFADE
         # ==========================================================
 
         filter_parts = []
 
-        # First video
-        current_video = "[0:v]"
+        # ----------------------------------------------------------
+        # Normalize all scene video streams BEFORE xfade
+        #
+        # xfade requires matching timebases.
+        # Scene videos may have different timebases depending on
+        # how they were encoded.
+        # ----------------------------------------------------------
+
+        for index in range(
+            len(scene_videos)
+        ):
+
+            filter_parts.append(
+                f"[{index}:v]"
+                f"fps=30,"
+                f"settb=AVTB,"
+                f"setpts=PTS-STARTPTS"
+                f"[scene{index}]"
+            )
+
+        # First normalized video
+        current_video = "[scene0]"
 
         accumulated_duration = durations[0]
 
@@ -2482,7 +2528,7 @@ class VideoRenderer:
         ):
 
             next_video = (
-                f"[{index}:v]"
+                f"[scene{index}]"
             )
 
             output_label = (
@@ -2512,7 +2558,6 @@ class VideoRenderer:
                 durations[index]
                 - TRANSITION_DURATION
             )
-
         # ==========================================================
         # AUDIO CROSSFADE
         # ==========================================================
@@ -2962,7 +3007,7 @@ class VideoRenderer:
 
                 shloka_overlay = (
                     scene_folder
-                    / "shloka_overlay.webm"
+                    / "shloka_overlay.mov"
                 )
 
                 if shloka_overlay.exists():
@@ -3163,6 +3208,10 @@ class VideoRenderer:
 
         return scene_data
 
+    # ==========================================================
+    # RENDER SCENE 2
+    # ==========================================================
+
     def render_scene_2(
         self,
         image_file,
@@ -3170,173 +3219,412 @@ class VideoRenderer:
         subtitle_file=None,
         shloka_overlay=None,
         output_file=None,
+    ):
+        """
+        Render Scene 2:
+
+            composed image
+                +
+            black subtitle box
+                +
+            Shloka overlay INSIDE subtitle box
+                +
+            normal subtitles
+                =
+            scene_video.mp4
+        """
+
+        from pathlib import Path
+        import subprocess
+
+        image_file = Path(
+            image_file
+        ).resolve()
+
+        audio_file = Path(
+            audio_file
+        ).resolve()
+
+        if subtitle_file:
+            subtitle_file = Path(
+                subtitle_file
+            ).resolve()
+
+        if shloka_overlay:
+            shloka_overlay = Path(
+                shloka_overlay
+            ).resolve()
+
+        if output_file:
+            output_file = Path(
+                output_file
+            ).resolve()
+        else:
+            output_file = (
+                image_file.parent
+                / "scene_video.mp4"
+            )
+
+        # ==========================================================
+        # CHECK FILES
+        # ==========================================================
+
+        for f in [
+            image_file,
+            audio_file,
+        ]:
+
+            if not f.exists():
+
+                raise FileNotFoundError(
+                    f"Missing file: {f}"
+                )
+
+        if (
+            subtitle_file
+            and not subtitle_file.exists()
         ):
-            """
-            Render Scene 2:
-            - composed image
-            - narration
-            - turquoise Shloka word highlighting directly over image
-            - normal subtitles
-            """
 
-            from pathlib import Path
-            import subprocess
-
-            image_file = Path(image_file)
-            audio_file = Path(audio_file)
-
-            if subtitle_file:
-                subtitle_file = Path(subtitle_file)
-
-            if shloka_overlay:
-                shloka_overlay = Path(shloka_overlay)
-
-            if output_file:
-                output_file = Path(output_file)
-            else:
-                output_file = image_file.parent / "scene_video.mp4"
-
-            for f in [image_file, audio_file]:
-                if not f.exists():
-                    raise FileNotFoundError(f"Missing file: {f}")
-
-            if subtitle_file and not subtitle_file.exists():
-                raise FileNotFoundError(
-                    f"Missing subtitle file: {subtitle_file}"
-                )
-
-            if shloka_overlay and not shloka_overlay.exists():
-                raise FileNotFoundError(
-                    f"Missing Shloka ASS file: {shloka_overlay}"
-                )
-
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-
-            # Get exact narration duration
-            probe = subprocess.run(
-                [
-                    str(FFPROBE_PATH),
-                    "-v",
-                    "error",
-                    "-show_entries",
-                    "format=duration",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    str(audio_file),
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
+            raise FileNotFoundError(
+                f"Missing subtitle file: "
+                f"{subtitle_file}"
             )
 
-            duration = float(probe.stdout.strip())
+        if (
+            shloka_overlay
+            and not shloka_overlay.exists()
+        ):
 
-            print(f"Scene 2 audio duration: {duration:.3f}s")
+            raise FileNotFoundError(
+                f"Missing Shloka overlay file: "
+                f"{shloka_overlay}"
+            )
 
-            # Work from the scene directory so ASS paths are simple
-            scene_dir = image_file.parent
+        output_file.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
-            cmd = [
-                str(FFMPEG_PATH),
-                "-y",
+        # ==========================================================
+        # AUDIO DURATION
+        # ==========================================================
 
-                "-loop", "1",
-                "-i", str(image_file),
+        probe = subprocess.run(
+            [
+                str(FFPROBE_PATH),
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(audio_file),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
 
-                "-i", str(audio_file),
-            ]
+        duration = float(
+            probe.stdout.strip()
+        )
 
-            filters = []
+        print(
+            f"Scene 2 audio duration: "
+            f"{duration:.3f}s"
+        )
 
-            # Base image
+        # ==========================================================
+        # FILTER GRAPH
+        # ==========================================================
+
+        filters = []
+
+        # ==========================================================
+        # BASE IMAGE
+        # ==========================================================
+
+        filters.append(
+            "[0:v]"
+            "scale=1080:1920:"
+            "force_original_aspect_ratio=increase,"
+            "crop=1080:1920,"
+            "setsar=1"
+            "[base]"
+        )
+
+        current = "[base]"
+
+        # ==========================================================
+        # BLACK SUBTITLE BOX
+        # ==========================================================
+        #
+        # Positioned in the lower part of the Shorts frame.
+        #
+        # x = 50
+        # y = 1360
+        # w = 980
+        # h = 470
+        #
+        # Slight transparency keeps the cinematic image visible.
+        # ==========================================================
+
+        filters.append(
+            f"{current}"
+            "drawbox="
+            "x=50:"
+            "y=1400:"
+            "w=980:"
+            "h=400:"
+            "color=black@0.82:"
+            "t=fill"
+            "[boxed]"
+        )
+
+        current = "[boxed]"
+
+        filters.append(
+            f"{current}"
+            "drawbox="
+            "x=56:"
+            "y=1406:"
+            "w=968:"
+            "h=388:"
+            "color=0xD4AF37@1.0:"
+            "t=6"
+            "[bordered]"
+        )
+
+        current = "[bordered]"
+
+        # ==========================================================
+        # SHLOKA OVERLAY
+        # ==========================================================
+        #
+        # Source overlay is 1080x1920 transparent video.
+        #
+        # Actual Shloka bounding box:
+        #
+        #     x = 81
+        #     y = 806
+        #     w = 922
+        #     h = 253
+        #
+        # Crop the Shloka itself first.
+        # Then scale it to fit inside the black subtitle box.
+        # ==========================================================
+
+        if shloka_overlay:
+
             filters.append(
-                "[0:v]"
-                "scale=1080:1920:force_original_aspect_ratio=increase,"
-                "crop=1080:1920,"
-                "setsar=1"
-                "[base]"
+                "[2:v]"
+                "format=rgba,"
+                "crop="
+                "922:253:81:806,"
+                "scale="
+                "760:190:"
+                "force_original_aspect_ratio=decrease"
+                "[shloka]"
             )
-
-            current = "[base]"
-
-            # ---------------------------------------------------------
-            # SHLOKA — rendered DIRECTLY over the image
-            # ---------------------------------------------------------
-            if shloka_overlay:
-
-                shloka_name = shloka_overlay.name
-
-                filters.append(
-                    f"{current}"
-                    f"ass=filename='{shloka_name}'"
-                    "[shloka]"
-                )
-
-                current = "[shloka]"
-
-            # ---------------------------------------------------------
-            # NORMAL SUBTITLES
-            # ---------------------------------------------------------
-            if subtitle_file:
-
-                subtitle_name = subtitle_file.name
-
-                filters.append(
-                    f"{current}"
-                    f"subtitles=filename='{subtitle_name}'"
-                    "[subtitled]"
-                )
-
-                current = "[subtitled]"
 
             filters.append(
                 f"{current}"
-                "format=yuv420p"
-                "[vout]"
+                "[shloka]"
+                "overlay="
+                "160:1430:"
+                "format=auto"
+                "[with_shloka]"
             )
 
-            filter_complex = ";".join(filters)
+            current = "[with_shloka]"
+
+
+        # # ==========================================================
+        # # NORMAL SUBTITLES
+        # # ==========================================================
+
+        # ==========================================================
+        # FINAL FORMAT
+        # ==========================================================
+
+        filters.append(
+            f"{current}"
+            "format=yuv420p"
+            "[vout]"
+        )
+
+        filter_complex = ";".join(
+            filters
+        )
+
+        # ==========================================================
+        # FFMPEG COMMAND
+        # ==========================================================
+
+        cmd = [
+
+            str(FFMPEG_PATH),
+
+            "-y",
+
+            # ------------------------------------------------------
+            # IMAGE
+            # ------------------------------------------------------
+
+            "-loop",
+            "1",
+
+            "-i",
+            str(image_file),
+
+            # ------------------------------------------------------
+            # AUDIO
+            # ------------------------------------------------------
+
+            "-i",
+            str(audio_file),
+        ]
+
+        # ----------------------------------------------------------
+        # SHLOKA
+        # ----------------------------------------------------------
+
+        if shloka_overlay:
 
             cmd += [
-                "-filter_complex",
-                filter_complex,
 
-                "-map", "[vout]",
-                "-map", "1:a",
+                "-stream_loop",
+                "-1",
 
-                "-c:v", "libx264",
-                "-preset", "medium",
-                "-crf", "18",
-
-                "-c:a", "aac",
-                "-b:a", "192k",
-
-                "-t", str(duration),
-
-                "-movflags", "+faststart",
-
-                str(output_file),
+                "-i",
+                str(shloka_overlay),
             ]
 
-            print("\n========================================")
-            print("RENDERING SCENE 2")
-            print("========================================")
-            print(f"Image:    {image_file}")
-            print(f"Audio:    {audio_file}")
-            print(f"Shloka:   {shloka_overlay}")
-            print(f"Subtitle: {subtitle_file}")
-            print(f"Output:   {output_file}")
-            print("========================================\n")
+        # ==========================================================
+        # FILTER
+        # ==========================================================
 
-            subprocess.run(
-                cmd,
-                cwd=str(scene_dir),
-                check=True,
+        cmd += [
+
+            "-filter_complex",
+            filter_complex,
+
+            "-map",
+            "[vout]",
+
+            "-map",
+            "1:a",
+
+            # ------------------------------------------------------
+            # VIDEO
+            # ------------------------------------------------------
+
+            "-c:v",
+            "libx264",
+
+            "-preset",
+            "medium",
+
+            "-crf",
+            "18",
+
+            "-pix_fmt",
+            "yuv420p",
+
+            # ------------------------------------------------------
+            # AUDIO
+            # ------------------------------------------------------
+
+            "-c:a",
+            "aac",
+
+            "-b:a",
+            "192k",
+
+            "-ar",
+            "48000",
+
+            # ------------------------------------------------------
+            # DURATION
+            # ------------------------------------------------------
+
+            "-t",
+            f"{duration:.6f}",
+
+            "-movflags",
+            "+faststart",
+
+            str(output_file),
+        ]
+
+        # ==========================================================
+        # DISPLAY
+        # ==========================================================
+
+        print()
+        print("=" * 80)
+        print("RENDERING SCENE 2")
+        print("=" * 80)
+
+        print(
+            f"Image    : {image_file}"
+        )
+
+        print(
+            f"Audio    : {audio_file}"
+        )
+
+        print(
+            f"Shloka   : {shloka_overlay}"
+        )
+
+        print(
+            f"Subtitle : {subtitle_file}"
+        )
+
+        print(
+            f"Output   : {output_file}"
+        )
+
+        print("=" * 80)
+        print()
+
+        # ==========================================================
+        # RUN
+        # ==========================================================
+
+        subprocess.run(
+            cmd,
+            check=True,
+        )
+
+        # ==========================================================
+        # VERIFY
+        # ==========================================================
+
+        if not output_file.exists():
+
+            raise RuntimeError(
+                "Scene 2 video was not created:\n"
+                f"{output_file}"
             )
 
-            print("\n========================================")
-            print("SCENE 2 RENDERED SUCCESSFULLY")
-            print("========================================")
-            print(output_file)
+        if output_file.stat().st_size <= 0:
 
-            return output_file
+            raise RuntimeError(
+                f"Scene 2 video is empty:\n"
+                f"{output_file}"
+            )
+
+        print()
+        print("=" * 80)
+        print("SCENE 2 RENDERED SUCCESSFULLY")
+        print("=" * 80)
+        print(
+            output_file
+        )
+        print()
+
+        return output_file
+
+

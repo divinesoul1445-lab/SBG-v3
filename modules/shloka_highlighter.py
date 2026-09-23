@@ -976,147 +976,109 @@ class ShlokaHighlighter:
     # PNG → TRANSPARENT WEBM
     # ========================================================
 
-    def _frames_to_webm(
+    def _frames_to_mov(
         self,
         frames_dir: str,
         output_path: str,
         duration: float,
-    ):
+        ):
+            import os
+            import subprocess
+            from pathlib import Path
 
-        os.makedirs(
-            os.path.dirname(
-                output_path
-            ) or ".",
-            exist_ok=True,
-        )
-
-        ffmpeg = self._find_ffmpeg()
-
-        input_pattern = os.path.join(
-            frames_dir,
-            "frame_%06d.png",
-        )
-
-        command = [
-            ffmpeg,
-            "-y",
-            "-hide_banner",
-            "-loglevel", "error",
-            # ------------------------------------------------
-            # PNG sequence
-            # ------------------------------------------------
-
-            "-framerate",
-            str(self.fps),
-
-            "-i",
-            input_pattern,
-
-            # ------------------------------------------------
-            # Preserve RGBA from PNG
-            # ------------------------------------------------
-
-            "-vf",
-            "format=rgba",
-
-            # ------------------------------------------------
-            # Exact duration
-            # ------------------------------------------------
-
-            "-t",
-            f"{duration:.6f}",
-
-            # ------------------------------------------------
-            # VP9
-            # ------------------------------------------------
-
-            "-c:v",
-            "libvpx-vp9",
-
-            # ------------------------------------------------
-            # REAL VP9 ALPHA
-            # ------------------------------------------------
-
-            "-pix_fmt",
-            "yuva420p",
-
-            "-auto-alt-ref",
-            "0",
-
-            # Explicitly tell WebM/VP9 this stream contains alpha
-            "-metadata:s:v:0",
-            "alpha_mode=1",
-
-            # ------------------------------------------------
-            # Quality
-            # ------------------------------------------------
-
-            "-lossless",
-            "1",
-
-            "-an",
-
-            output_path,
-        ]
-
-        print()
-        print(
-            "[ShlokaHighlighter] "
-            "Encoding TRANSPARENT WebM..."
-        )
-
-        print(
-            "FFmpeg command:"
-        )
-
-        print(
-            " ".join(
-                f'"{item}"'
-                if " " in str(item)
-                else str(item)
-                for item in command
-            )
-        )
-
-        print()
-
-        subprocess.run(
-            command,
-            check=True,
-        )
-
-        # ----------------------------------------------------
-        # Verify output
-        # ----------------------------------------------------
-
-        output_file = Path(
-            output_path
-        )
-
-        if not output_file.exists():
-
-            raise FileNotFoundError(
-                "Transparent WebM was not created:\n"
-                f"{output_file}"
+            os.makedirs(
+                os.path.dirname(output_path) or ".",
+                exist_ok=True,
             )
 
-        if output_file.stat().st_size <= 0:
+            ffmpeg = self._find_ffmpeg()
 
-            raise RuntimeError(
-                "Transparent WebM is empty:\n"
-                f"{output_file}"
+            input_pattern = os.path.join(
+                frames_dir,
+                "frame_%06d.png",
             )
 
-        print(
-            "[ShlokaHighlighter] "
-            f"WebM created: {output_file}"
-        )
+            command = [
+                ffmpeg,
+                "-y",
+                "-hide_banner",
+                "-loglevel", "error",
 
-        print(
-            "[ShlokaHighlighter] "
-            f"Size: {output_file.stat().st_size:,} bytes"
-        )
+                # PNG sequence
+                "-framerate",
+                str(self.fps),
 
+                "-i",
+                input_pattern,
+
+                # Preserve transparency
+                "-vf",
+                "format=yuva444p10le",
+
+                # Exact duration
+                "-t",
+                f"{duration:.6f}",
+
+                # ProRes 4444 with alpha
+                "-c:v",
+                "prores_ks",
+
+                "-profile:v",
+                "4444",
+
+                "-pix_fmt",
+                "yuva444p10le",
+
+                "-an",
+
+                output_path,
+            ]
+
+            print()
+            print(
+                "[ShlokaHighlighter] "
+                "Encoding TRANSPARENT MOV..."
+            )
+
+            print("FFmpeg command:")
+
+            print(
+                " ".join(
+                    f'"{item}"'
+                    if " " in str(item)
+                    else str(item)
+                    for item in command
+                )
+            )
+
+            print()
+
+            subprocess.run(
+                command,
+                check=True,
+            )
+
+            output_file = Path(output_path)
+
+            if not output_file.exists():
+                raise FileNotFoundError(
+                    "Transparent MOV was not created:\n"
+                    f"{output_file}"
+                )
+
+            if output_file.stat().st_size <= 0:
+                raise RuntimeError(
+                    "Transparent MOV is empty:\n"
+                    f"{output_file}"
+                )
+
+            print(
+                "[ShlokaHighlighter] "
+                "Transparent MOV created:"
+            )
+            print(output_file)
+    
+    
     # ========================================================
     # CREATE FROM narration.json
     # ========================================================
@@ -1168,7 +1130,7 @@ class ShlokaHighlighter:
             )
         )
 
-        self._frames_to_webm(
+        self._frames_to_mov(
             frames_dir=temp_dir,
             output_path=output_path,
             duration=actual_duration,
