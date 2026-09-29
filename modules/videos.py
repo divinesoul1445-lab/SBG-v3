@@ -2228,6 +2228,7 @@ class VideoRenderer:
     # RENDER LIP-SYNC VIDEO WITH EXISTING SUBTITLES
     # ==========================================================
 
+    
     def render_lipsync_scene(
         self,
         video_file,
@@ -2238,23 +2239,25 @@ class VideoRenderer:
         shloka_overlay=None,
     ):
         """
-        Render a Wav2Lip-generated scene video with the existing
-        SBG subtitle system.
+        Render a Wav2Lip-generated scene video.
 
         Pipeline:
 
             Wav2Lip video
                 +
-            existing word-highlight subtitles
+            optional normal subtitles
                 +
             optional Scene 2 Shloka overlay
                 =
             final scene_video.mp4
 
-        IMPORTANT:
-        - Does NOT modify the source Wav2Lip video.
-        - Does NOT draw another black box.
-        - Scene 2 Shloka overlay is optional.
+        Scene 2:
+            - Normal subtitle layer is disabled.
+            - Shloka is displayed inside the existing black box.
+
+        All scenes:
+            - Wav2Lip video is extended with the final frame when
+            necessary so video duration exactly matches narration.
         """
 
         from pathlib import Path
@@ -2286,7 +2289,6 @@ class VideoRenderer:
             (audio_file, "Narration audio"),
             (narration_json, "Narration JSON"),
         ]:
-
             if not f.exists():
                 raise FileNotFoundError(
                     f"{label} not found:\n{f}"
@@ -2320,6 +2322,19 @@ class VideoRenderer:
         )
 
         # ======================================================
+        # GET SOURCE VIDEO DURATION
+        # ======================================================
+
+        video_duration = self._video_duration(
+            video_file
+        )
+
+        print(
+            f"Scene {scene_number} Wav2Lip video duration: "
+            f"{video_duration:.3f}s"
+        )
+
+        # ======================================================
         # SUBTITLE FRAME DIRECTORY
         # ======================================================
 
@@ -2328,27 +2343,39 @@ class VideoRenderer:
             / "_subtitle_frames"
         )
 
-        self._create_word_highlight_overlay(
-            narration_json=str(
-                narration_json
-            ),
-            output_dir=str(
-                overlay_dir
-            ),
-            duration=duration,
+        # ------------------------------------------------------
+        # Scene 2 uses the Shloka overlay instead of normal
+        # narration subtitles.
+        # ------------------------------------------------------
+
+        use_normal_subtitles = not (
+            scene_number == 2
+            and shloka_overlay is not None
         )
 
-        input_pattern = (
-            overlay_dir
-            / "frame_%06d.png"
-        )
+        if use_normal_subtitles:
 
-        if not input_pattern.parent.exists():
-            raise FileNotFoundError(
-                "Subtitle frame directory "
-                "was not created:\n"
-                f"{overlay_dir}"
+            self._create_word_highlight_overlay(
+                narration_json=str(
+                    narration_json
+                ),
+                output_dir=str(
+                    overlay_dir
+                ),
+                duration=duration,
             )
+
+            input_pattern = (
+                overlay_dir
+                / "frame_%06d.png"
+            )
+
+            if not input_pattern.parent.exists():
+                raise FileNotFoundError(
+                    "Subtitle frame directory "
+                    "was not created:\n"
+                    f"{overlay_dir}"
+                )
 
         # ======================================================
         # FILTER GRAPH
@@ -2358,6 +2385,11 @@ class VideoRenderer:
 
         # ------------------------------------------------------
         # Wav2Lip VIDEO
+        #
+        # Extend the final frame if the generated video is
+        # shorter than the narration.
+        #
+        # tpad=stop_mode=clone freezes the final frame.
         # ------------------------------------------------------
 
         filters.append(
@@ -2365,32 +2397,35 @@ class VideoRenderer:
             "scale=1080:1920:"
             "force_original_aspect_ratio=increase,"
             "crop=1080:1920,"
-            "setsar=1"
+            "setsar=1,"
+            "tpad=stop_mode=clone:stop_duration="
+            f"{max(0.0, duration - video_duration):.6f},"
+            "setpts=PTS-STARTPTS"
             "[bg]"
         )
 
-        # ------------------------------------------------------
-        # SUBTITLE PNG SEQUENCE
-        # ------------------------------------------------------
-
-        filters.append(
-            "[1:v]"
-            "format=rgba"
-            "[sub]"
-        )
+        current = "[bg]"
 
         # ------------------------------------------------------
         # NORMAL SUBTITLES
         # ------------------------------------------------------
 
-        filters.append(
-            "[bg][sub]"
-            "overlay=0:0:"
-            "shortest=1"
-            "[with_subs]"
-        )
+        if use_normal_subtitles:
 
-        current = "[with_subs]"
+            filters.append(
+                "[1:v]"
+                "format=rgba"
+                "[sub]"
+            )
+
+            filters.append(
+                "[bg][sub]"
+                "overlay=0:0:"
+                "shortest=0"
+                "[with_subs]"
+            )
+
+            current = "[with_subs]"
 
         # ------------------------------------------------------
         # OPTIONAL SHLOKA OVERLAY
@@ -2398,19 +2433,32 @@ class VideoRenderer:
 
         if shloka_overlay:
 
-            filters.append(
-                "[2:v]"
-                "format=rgba,"
-                "crop=922:253:81:806,"
-                "scale=760:190:"
-                "force_original_aspect_ratio=decrease"
-                "[shloka]"
-            )
+            if use_normal_subtitles:
+
+                filters.append(
+                    "[2:v]"
+                    "format=rgba,"
+                    "crop=922:253:81:806,"
+                    "scale=760:190:"
+                    "force_original_aspect_ratio=decrease"
+                    "[shloka]"
+                )
+
+            else:
+
+                filters.append(
+                    "[1:v]"
+                    "format=rgba,"
+                    "crop=922:253:81:806,"
+                    "scale=760:190:"
+                    "force_original_aspect_ratio=decrease"
+                    "[shloka]"
+                )
 
             filters.append(
                 f"{current}[shloka]"
                 "overlay=160:1312:"
-                "shortest=1"
+                "shortest=0"
                 "[with_shloka]"
             )
 
@@ -2448,23 +2496,28 @@ class VideoRenderer:
 
             "-i",
             str(video_file),
-
-            # --------------------------------------------------
-            # INPUT 1 — subtitle PNG sequence
-            # --------------------------------------------------
-
-            "-framerate",
-            str(FPS),
-
-            "-i",
-            str(input_pattern),
         ]
 
         # ------------------------------------------------------
-        # INPUT 2 — optional Shloka overlay
+        # INPUT 1 — subtitle PNG sequence
+        # ------------------------------------------------------
+
+        if use_normal_subtitles:
+
+            cmd += [
+                "-framerate",
+                str(FPS),
+
+                "-i",
+                str(input_pattern),
+            ]
+
+        # ------------------------------------------------------
+        # INPUT 1 or 2 — Shloka overlay
         # ------------------------------------------------------
 
         if shloka_overlay:
+
             cmd += [
                 "-i",
                 str(shloka_overlay),
@@ -2519,7 +2572,7 @@ class VideoRenderer:
             "192k",
 
             # --------------------------------------------------
-            # LENGTH
+            # EXACT NARRATION LENGTH
             # --------------------------------------------------
 
             "-t",
@@ -2561,6 +2614,19 @@ class VideoRenderer:
                 f"Lip-sync scene video is empty:\n"
                 f"{output_file}"
             )
+
+        # ======================================================
+        # VERIFY FINAL VIDEO DURATION
+        # ======================================================
+
+        final_video_duration = self._video_duration(
+            output_file
+        )
+
+        print(
+            f"Scene {scene_number} final video duration: "
+            f"{final_video_duration:.3f}s"
+        )
 
         Logger.success(
             f"Lip-sync scene video saved -> "
@@ -3759,6 +3825,7 @@ class VideoRenderer:
         # ==========================================================
 
         if shloka_overlay:
+
 
             filters.append(
                 "[2:v]"
