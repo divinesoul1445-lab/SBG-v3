@@ -1,4 +1,4 @@
-"""
+﻿"""
 SBG V3 Pipeline
 
 CURRENT DEVELOPMENT MODE:
@@ -8,63 +8,63 @@ Chapter 1, Verse 1 ONLY
 Architecture:
 
 Excel
-    ↓
+    â†“
 Approved Scene 1 to 4 Narrations
-    ↓
+    â†“
 Fixed Scene Images
-    ↓
+    â†“
 Scene Composer
-    ↓
+    â†“
 Composed Scene Images
-    ↓
+    â†“
 Scene TTS
-    ↓
+    â†“
 Scene Subtitles
-    ↓
+    â†“
 Individual Scene Videos
-    ↓
+    â†“
 Merge Scene Videos
-    ↓
+    â†“
 Background Music
-    ↓
+    â†“
 Final Video
 
 
 Output:
 
 output/
-└── chapter_001/
-    └── verse_001/
-        ├── scene1/
-        │   ├── composed_image.png
-        │   ├── narration.mp3
-        │   ├── subtitles.srt
-        │   └── scene_video.mp4
-        │
-        ├── scene2/
-        │   ├── composed_image.png
-        │   ├── narration.mp3
-        │   ├── subtitles.srt
-        │   └── scene_video.mp4
-        │
-        ├── scene3/
-        │   ├── composed_image.png
-        │   ├── narration.mp3
-        │   ├── subtitles.srt
-        │   └── scene_video.mp4
-        │
-        ├── scene4/
-        │   ├── composed_image.png
-        │   ├── narration.mp3
-        │   ├── subtitles.srt
-        │   └── scene_video.mp4
-        │
-        ├── final/
-        │   ├── scenes.txt
-        │   ├── merged_video.mp4
-        │   └── final_video.mp4
-        │
-        └── pipeline_output.json
+â””â”€â”€ chapter_001/
+    â””â”€â”€ verse_001/
+        â”œâ”€â”€ scene1/
+        â”‚   â”œâ”€â”€ composed_image.png
+        â”‚   â”œâ”€â”€ narration.mp3
+        â”‚   â”œâ”€â”€ subtitles.srt
+        â”‚   â””â”€â”€ scene_video.mp4
+        â”‚
+        â”œâ”€â”€ scene2/
+        â”‚   â”œâ”€â”€ composed_image.png
+        â”‚   â”œâ”€â”€ narration.mp3
+        â”‚   â”œâ”€â”€ subtitles.srt
+        â”‚   â””â”€â”€ scene_video.mp4
+        â”‚
+        â”œâ”€â”€ scene3/
+        â”‚   â”œâ”€â”€ composed_image.png
+        â”‚   â”œâ”€â”€ narration.mp3
+        â”‚   â”œâ”€â”€ subtitles.srt
+        â”‚   â””â”€â”€ scene_video.mp4
+        â”‚
+        â”œâ”€â”€ scene4/
+        â”‚   â”œâ”€â”€ composed_image.png
+        â”‚   â”œâ”€â”€ narration.mp3
+        â”‚   â”œâ”€â”€ subtitles.srt
+        â”‚   â””â”€â”€ scene_video.mp4
+        â”‚
+        â”œâ”€â”€ final/
+        â”‚   â”œâ”€â”€ scenes.txt
+        â”‚   â”œâ”€â”€ merged_video.mp4
+        â”‚   â””â”€â”€ final_video.mp4
+        â”‚
+        â””â”€â”€ pipeline_output.json
 
 
 IMPORTANT:
@@ -89,6 +89,7 @@ from modules.subtitles import SubtitleGenerator
 from modules.videos import VideoRenderer
 from modules.scene_composer import SceneComposer
 from modules.shloka_highlighter import create_shloka_overlay_from_narration
+import subprocess
 
 class Pipeline:
 
@@ -141,6 +142,7 @@ class Pipeline:
         message,
         func,
         *args,
+        **kwargs,
     ):
 
         Logger.info(
@@ -148,7 +150,8 @@ class Pipeline:
         )
 
         result = func(
-            *args
+            *args,
+            **kwargs,
         )
 
         Logger.success(
@@ -811,7 +814,7 @@ class Pipeline:
 
         composed_image_files = (
             self._run_step(
-                "Composing Scene 1–4 images...",
+                "Composing Scene 1â€“4 images...",
                 self._compose_scene_images,
                 verse_folder,
                 source_image_files,
@@ -895,20 +898,25 @@ class Pipeline:
             )
 
 
-        # ======================================================
+                # ======================================================
         # 8. RENDER ALL 4 SCENE VIDEOS
         #
-        # SAME RENDERER FOR ALL SCENES
+        # PIPELINE:
         #
-        # image
-        #   +
+        # animated_sceneN.mp4
+        #        +
         # narration.mp3
-        #   +
-        # narration.json
-        #   ↓
-        # render_scene()
+        #        â†“
+        # Wav2Lip
+        #        â†“
+        # lipsync_sceneN.mp4
+        #        +
+        # existing subtitle system
+        #        â†“
+        # scene_video.mp4
         #
-        # narration.json is the timing source of truth.
+        # Scene 2 additionally receives the existing
+        # Shloka highlight overlay.
         # ======================================================
 
         scene_videos = []
@@ -929,16 +937,8 @@ class Pipeline:
             # Input files
             # --------------------------------------------------
 
-            composed_image = Path(
-                composed_image_files[index - 1]
-            )
-
             audio_file = Path(
                 audio_files[index - 1]
-            )
-
-            subtitle_file = Path(
-                subtitle_files[index - 1]
             )
 
             narration_json = (
@@ -946,37 +946,17 @@ class Pipeline:
                 / "narration.json"
             )
 
-            # --------------------------------------------------
-            # Validate
-            # --------------------------------------------------
+            animated_video = (
+                Path.cwd()
+                / "assets"
+                / "animations"
+                / f"animated_scene{index}.mp4"
+            )
 
-            if not composed_image.exists():
-
-                raise FileNotFoundError(
-                    f"Scene {index} composed image "
-                    f"was not found:\n"
-                    f"{composed_image}"
-                )
-
-            if not audio_file.exists():
-
-                raise FileNotFoundError(
-                    f"Scene {index} audio "
-                    f"was not found:\n"
-                    f"{audio_file}"
-                )
-
-            if not narration_json.exists():
-
-                raise FileNotFoundError(
-                    f"Scene {index} narration.json "
-                    f"was not found:\n"
-                    f"{narration_json}"
-                )
-
-            # --------------------------------------------------
-            # Output
-            # --------------------------------------------------
+            lipsync_video = (
+                scene_folder
+                / f"lipsync_scene{index}.mp4"
+            )
 
             scene_video = (
                 scene_folder
@@ -984,14 +964,119 @@ class Pipeline:
             )
 
             # --------------------------------------------------
-            # Render
-            #
-            # SAME FUNCTION FOR EVERY SCENE
+            # Validate
             # --------------------------------------------------
 
+            if not audio_file.exists():
+
+                raise FileNotFoundError(
+                    f"Scene {index} narration not found:\n"
+                    f"{audio_file}"
+                )
+
+            if not narration_json.exists():
+
+                raise FileNotFoundError(
+                    f"Scene {index} narration JSON not found:\n"
+                    f"{narration_json}"
+                )
+
+            if not animated_video.exists():
+
+                raise FileNotFoundError(
+                    f"Scene {index} animated video not found:\n"
+                    f"{animated_video}\n\n"
+                    f"Expected the 15-second Fal animation "
+                    f"to exist before Wav2Lip."
+                )
+
+            # ==================================================
+            # 8A. WAV2LIP
+            # ==================================================
+
+            Logger.info(
+                f"Running Wav2Lip for Scene {index}..."
+            )
+
+            wav2lip_command = [
+                r"C:\ProgramData\miniconda3\envs\wav2lip_cpu\python.exe",
+                "inference.py",
+
+                "--checkpoint_path",
+                str(Path("checkpoints") / "wav2lip_gan.pth"),
+
+                "--face",
+                str(animated_video.resolve()),
+
+                "--audio",
+                str(audio_file.resolve()),
+
+                "--outfile",
+                str(lipsync_video.resolve()),
+
+                "--resize_factor",
+                "2",
+
+                "--out_height",
+                "1920",
+
+                "--pads",
+                "0",
+                "10",
+                "0",
+                "0",
+            ]
+
             # --------------------------------------------------
-            # Scene 2 Shloka highlight overlay
+            # IMPORTANT:
+            #
+            # Wav2Lip's inference.py lives inside:
+            #
+            # C:\SBG\SBG-v4\Wav2Lip
+            #
+            # Therefore the subprocess working directory
+            # MUST be Wav2Lip.
             # --------------------------------------------------
+
+            wav2lip_dir = (
+                Path.cwd()
+                / "Wav2Lip"
+            )
+
+            self._run_step(
+                f"Wav2Lip Scene {index}...",
+                subprocess.run,
+                wav2lip_command,
+                cwd=str(wav2lip_dir),
+                check=True,
+            )
+
+            # --------------------------------------------------
+            # Validate Wav2Lip output
+            # --------------------------------------------------
+
+            if not lipsync_video.exists():
+
+                raise FileNotFoundError(
+                    f"Wav2Lip did not create Scene {index} output:\n"
+                    f"{lipsync_video}"
+                )
+
+            if lipsync_video.stat().st_size <= 0:
+
+                raise RuntimeError(
+                    f"Wav2Lip output is empty:\n"
+                    f"{lipsync_video}"
+                )
+
+            Logger.success(
+                f"Wav2Lip Scene {index} : "
+                f"{lipsync_video}"
+            )
+
+            # ==================================================
+            # 8B. SCENE 2 SHLOKA OVERLAY
+            # ==================================================
 
             shloka_overlay = None
 
@@ -1002,30 +1087,40 @@ class Pipeline:
                     / "shloka_overlay.mov"
                 )
 
-                Logger.info(
-                    "Generating Scene 2 Shloka highlight overlay..."
-                )
+                # --------------------------------------------------
+                # Generate automatically if missing.
+                # --------------------------------------------------
 
-                self._run_step(
-                    "Generating Scene 2 Shloka overlay...",
-                    create_shloka_overlay_from_narration,
-                    str(shloka).strip(),
-                    str(narration_json),
-                    str(shloka_overlay),
-                )
+                if not shloka_overlay.exists():
+
+                    Logger.info(
+                        "Generating Scene 2 Shloka overlay..."
+                    )
+
+                    create_shloka_overlay_from_narration(
+                        shloka=shloka,
+                        narration_json=str(narration_json),
+                        output_path=str(shloka_overlay),
+                        width=1080,
+                        height=1920,
+                        fps=30,
+                    )
+
+                # --------------------------------------------------
+                # Validate overlay
+                # --------------------------------------------------
 
                 if not shloka_overlay.exists():
 
                     raise FileNotFoundError(
-                        "Scene 2 Shloka overlay "
-                        "was not created:\n"
+                        f"Scene 2 Shloka overlay was not created:\n"
                         f"{shloka_overlay}"
                     )
 
                 if shloka_overlay.stat().st_size <= 0:
 
-                    raise Exception(
-                        "Scene 2 Shloka overlay is empty:\n"
+                    raise RuntimeError(
+                        f"Scene 2 Shloka overlay is empty:\n"
                         f"{shloka_overlay}"
                     )
 
@@ -1033,46 +1128,44 @@ class Pipeline:
                     f"Scene 2 Shloka overlay : "
                     f"{shloka_overlay}"
                 )
+            # 8C. ADD EXISTING SUBTITLE SYSTEM
+            # ==================================================
 
+            scene_video = self._run_step(
+                f"Rendering Scene {index} subtitles...",
+                self.video.render_lipsync_scene,
 
-            # --------------------------------------------------
-            # Render
-            # --------------------------------------------------
+                str(
+                    lipsync_video
+                ),
 
-            if index == 2:
+                str(
+                    audio_file
+                ),
 
-                scene_video = self._run_step(
-                    "Rendering Scene 2 video...",
-                    self.video.render_scene_2,
-                    str(composed_image),
-                    str(audio_file),
-                    (
-                            None
-                            if index == 2
-                            else subtitle_file
-                    ),
-                    str(shloka_overlay),
-                    str(scene_video),
-                )
+                str(
+                    narration_json
+                ),
 
-            else:
+                str(
+                    scene_video
+                ),
 
-                scene_video = self._run_step(
-                    f"Rendering Scene {index} video...",
-                    self.video.render_scene,
-                    str(composed_image),
-                    str(audio_file),
-                    str(subtitle_file),
-                    str(narration_json),
-                    str(scene_video),
-                )
+                index,
+
+                (
+                    str(shloka_overlay)
+                    if shloka_overlay
+                    else None
+                ),
+            )
 
             scene_video = Path(
                 scene_video
             )
 
             # --------------------------------------------------
-            # Validate
+            # Validate final scene video
             # --------------------------------------------------
 
             if not scene_video.exists():
@@ -1084,7 +1177,7 @@ class Pipeline:
 
             if scene_video.stat().st_size <= 0:
 
-                raise Exception(
+                raise RuntimeError(
                     f"Scene {index} video is empty:\n"
                     f"{scene_video}"
                 )
@@ -1097,6 +1190,7 @@ class Pipeline:
             scene_videos.append(
                 scene_video
             )
+        
         # ======================================================
         # 9. PRINT SCENE DURATIONS
         # ======================================================
@@ -1244,3 +1338,5 @@ class Pipeline:
         )
 
         return True
+
+

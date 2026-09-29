@@ -323,7 +323,7 @@ class SceneComposer:
         # =====================================================
 
         panel_width = int(
-            self.WIDTH * 0.88
+            self.WIDTH * 0.815
         )
 
         panel_x = (
@@ -335,7 +335,7 @@ class SceneComposer:
         # For 1080x1920 this starts around y=650,
         # leaving the header area clean.
         panel_top = int(
-            self.HEIGHT * 0.55
+            self.HEIGHT * 0.655
         )
 
         # Initial panel height.
@@ -1231,8 +1231,32 @@ class SceneComposer:
         # =====================================================
 
         
+        if mode == "fit":
 
-        
+            # =================================================
+            # FIT MODE
+            # =================================================
+            #
+            # Scene 3 source image is already approximately
+            # 9:16, so preserve the COMPLETE image.
+            #
+            # No blurred background.
+            # No darkening.
+            # No crop.
+            #
+            # Final output is exactly 1080x1920.
+            # =================================================
+
+            image = image.resize(
+                (
+                    self.WIDTH,
+                    self.HEIGHT,
+                ),
+                Image.Resampling.LANCZOS,
+            )
+
+            return image
+
         
         # =====================================================
         # CROP MODE
@@ -1780,3 +1804,7 @@ class SceneComposer:
             )
 
         return results
+
+
+
+    

@@ -678,7 +678,7 @@ class VideoRenderer:
             "0,0,0,0,"
             "100,100,0,0,"
             "1,3,2,"
-            "2,80,80,545,1"
+            "2,80,80,300,1"
         )
 
         lines.append(
@@ -2224,7 +2224,351 @@ class VideoRenderer:
 
         return output_file
     
-    
+        # ==========================================================
+    # RENDER LIP-SYNC VIDEO WITH EXISTING SUBTITLES
+    # ==========================================================
+
+    def render_lipsync_scene(
+        self,
+        video_file,
+        audio_file,
+        narration_json,
+        output_file=None,
+        scene_number=1,
+        shloka_overlay=None,
+    ):
+        """
+        Render a Wav2Lip-generated scene video with the existing
+        SBG subtitle system.
+
+        Pipeline:
+
+            Wav2Lip video
+                +
+            existing word-highlight subtitles
+                +
+            optional Scene 2 Shloka overlay
+                =
+            final scene_video.mp4
+
+        IMPORTANT:
+        - Does NOT modify the source Wav2Lip video.
+        - Does NOT draw another black box.
+        - Scene 2 Shloka overlay is optional.
+        """
+
+        from pathlib import Path
+        import subprocess
+
+        video_file = Path(video_file).resolve()
+        audio_file = Path(audio_file).resolve()
+        narration_json = Path(narration_json).resolve()
+
+        if output_file:
+            output_file = Path(output_file).resolve()
+        else:
+            output_file = (
+                video_file.parent
+                / "scene_video.mp4"
+            )
+
+        if shloka_overlay:
+            shloka_overlay = Path(
+                shloka_overlay
+            ).resolve()
+
+        # ======================================================
+        # CHECK FILES
+        # ======================================================
+
+        for f, label in [
+            (video_file, "Lip-sync video"),
+            (audio_file, "Narration audio"),
+            (narration_json, "Narration JSON"),
+        ]:
+
+            if not f.exists():
+                raise FileNotFoundError(
+                    f"{label} not found:\n{f}"
+                )
+
+        if (
+            shloka_overlay
+            and not shloka_overlay.exists()
+        ):
+            raise FileNotFoundError(
+                f"Shloka overlay not found:\n"
+                f"{shloka_overlay}"
+            )
+
+        output_file.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        # ======================================================
+        # AUDIO DURATION
+        # ======================================================
+
+        duration = self._audio_duration(
+            audio_file
+        )
+
+        print(
+            f"Scene {scene_number} audio duration: "
+            f"{duration:.3f}s"
+        )
+
+        # ======================================================
+        # SUBTITLE FRAME DIRECTORY
+        # ======================================================
+
+        overlay_dir = (
+            output_file.parent
+            / "_subtitle_frames"
+        )
+
+        self._create_word_highlight_overlay(
+            narration_json=str(
+                narration_json
+            ),
+            output_dir=str(
+                overlay_dir
+            ),
+            duration=duration,
+        )
+
+        input_pattern = (
+            overlay_dir
+            / "frame_%06d.png"
+        )
+
+        if not input_pattern.parent.exists():
+            raise FileNotFoundError(
+                "Subtitle frame directory "
+                "was not created:\n"
+                f"{overlay_dir}"
+            )
+
+        # ======================================================
+        # FILTER GRAPH
+        # ======================================================
+
+        filters = []
+
+        # ------------------------------------------------------
+        # Wav2Lip VIDEO
+        # ------------------------------------------------------
+
+        filters.append(
+            "[0:v]"
+            "scale=1080:1920:"
+            "force_original_aspect_ratio=increase,"
+            "crop=1080:1920,"
+            "setsar=1"
+            "[bg]"
+        )
+
+        # ------------------------------------------------------
+        # SUBTITLE PNG SEQUENCE
+        # ------------------------------------------------------
+
+        filters.append(
+            "[1:v]"
+            "format=rgba"
+            "[sub]"
+        )
+
+        # ------------------------------------------------------
+        # NORMAL SUBTITLES
+        # ------------------------------------------------------
+
+        filters.append(
+            "[bg][sub]"
+            "overlay=0:0:"
+            "shortest=1"
+            "[with_subs]"
+        )
+
+        current = "[with_subs]"
+
+        # ------------------------------------------------------
+        # OPTIONAL SHLOKA OVERLAY
+        # ------------------------------------------------------
+
+        if shloka_overlay:
+
+            filters.append(
+                "[2:v]"
+                "format=rgba,"
+                "crop=922:253:81:806,"
+                "scale=760:190:"
+                "force_original_aspect_ratio=decrease"
+                "[shloka]"
+            )
+
+            filters.append(
+                f"{current}[shloka]"
+                "overlay=160:1312:"
+                "shortest=1"
+                "[with_shloka]"
+            )
+
+            current = "[with_shloka]"
+
+        # ------------------------------------------------------
+        # FINAL FORMAT
+        # ------------------------------------------------------
+
+        filters.append(
+            f"{current}"
+            "format=yuv420p"
+            "[vout]"
+        )
+
+        filter_complex = ";".join(
+            filters
+        )
+
+        # ======================================================
+        # FFMPEG COMMAND
+        # ======================================================
+
+        cmd = [
+            str(FFMPEG_PATH),
+
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+
+            # --------------------------------------------------
+            # INPUT 0 — Wav2Lip video
+            # --------------------------------------------------
+
+            "-i",
+            str(video_file),
+
+            # --------------------------------------------------
+            # INPUT 1 — subtitle PNG sequence
+            # --------------------------------------------------
+
+            "-framerate",
+            str(FPS),
+
+            "-i",
+            str(input_pattern),
+        ]
+
+        # ------------------------------------------------------
+        # INPUT 2 — optional Shloka overlay
+        # ------------------------------------------------------
+
+        if shloka_overlay:
+            cmd += [
+                "-i",
+                str(shloka_overlay),
+            ]
+
+        # ------------------------------------------------------
+        # FILTER
+        # ------------------------------------------------------
+
+        cmd += [
+            "-filter_complex",
+            filter_complex,
+
+            # --------------------------------------------------
+            # MAP VIDEO
+            # --------------------------------------------------
+
+            "-map",
+            "[vout]",
+
+            # --------------------------------------------------
+            # MAP ORIGINAL NARRATION AUDIO
+            # --------------------------------------------------
+
+            "-map",
+            "0:a?",
+
+            # --------------------------------------------------
+            # VIDEO
+            # --------------------------------------------------
+
+            "-c:v",
+            "libx264",
+
+            "-preset",
+            "medium",
+
+            "-crf",
+            "18",
+
+            "-pix_fmt",
+            "yuv420p",
+
+            # --------------------------------------------------
+            # AUDIO
+            # --------------------------------------------------
+
+            "-c:a",
+            "aac",
+
+            "-b:a",
+            "192k",
+
+            # --------------------------------------------------
+            # LENGTH
+            # --------------------------------------------------
+
+            "-t",
+            f"{duration:.3f}",
+
+            # --------------------------------------------------
+            # OUTPUT
+            # --------------------------------------------------
+
+            str(output_file),
+        ]
+
+        self._print_command(
+            cmd
+        )
+
+        # ======================================================
+        # RUN FFMPEG
+        # ======================================================
+
+        subprocess.run(
+            cmd,
+            check=True,
+        )
+
+        # ======================================================
+        # VERIFY
+        # ======================================================
+
+        if not output_file.exists():
+            raise RuntimeError(
+                "FFmpeg completed but lip-sync "
+                "scene video was not created:\n"
+                f"{output_file}"
+            )
+
+        if output_file.stat().st_size <= 0:
+            raise RuntimeError(
+                f"Lip-sync scene video is empty:\n"
+                f"{output_file}"
+            )
+
+        Logger.success(
+            f"Lip-sync scene video saved -> "
+            f"{output_file}"
+        )
+
+        return output_file
+
     # ==========================================================
     # MERGE SCENE VIDEOS
     # ==========================================================
@@ -3369,33 +3713,33 @@ class VideoRenderer:
         # Slight transparency keeps the cinematic image visible.
         # ==========================================================
 
-        filters.append(
-            f"{current}"
-            "drawbox="
-            "x=50:"
-            "y=1400:"
-            "w=980:"
-            "h=400:"
-            "color=black@0.82:"
-            "t=fill"
-            "[boxed]"
-        )
+        # filters.append(
+        #     f"{current}"
+        #     "drawbox="
+        #     "x=50:"
+        #     "y=1400:"
+        #     "w=980:"
+        #     "h=400:"
+        #     "color=black@0.82:"
+        #     "t=fill"
+        #     "[boxed]"
+        # )
 
-        current = "[boxed]"
+        # current = "[boxed]"
 
-        filters.append(
-            f"{current}"
-            "drawbox="
-            "x=56:"
-            "y=1406:"
-            "w=968:"
-            "h=388:"
-            "color=0xD4AF37@1.0:"
-            "t=6"
-            "[bordered]"
-        )
+        # filters.append(
+        #     f"{current}"
+        #     "drawbox="
+        #     "x=56:"
+        #     "y=1406:"
+        #     "w=968:"
+        #     "h=388:"
+        #     "color=0xD4AF37@1.0:"
+        #     "t=6"
+        #     "[bordered]"
+        # )
 
-        current = "[bordered]"
+        # current = "[bordered]"
 
         # ==========================================================
         # SHLOKA OVERLAY
@@ -3431,7 +3775,7 @@ class VideoRenderer:
                 f"{current}"
                 "[shloka]"
                 "overlay="
-                "160:1430:"
+                "160:1312:"
                 "format=auto"
                 "[with_shloka]"
             )

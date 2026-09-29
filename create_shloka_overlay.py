@@ -1,4 +1,4 @@
-import json
+﻿import json
 import subprocess
 from pathlib import Path
 
@@ -22,7 +22,7 @@ SCENE = (
 
 JSON_FILE = SCENE / "narration.json"
 ASS_FILE = SCENE / "shloka_overlay.ass"
-OUTPUT_FILE = SCENE / "shloka_overlay.webm"
+OUTPUT_FILE = SCENE / "shloka_overlay.mov"
 
 FFMPEG = BASE / "tools" / "ffmpeg" / "bin" / "ffmpeg.exe"
 
@@ -161,17 +161,17 @@ cmd = [
     "ass=shloka_overlay.ass,format=yuva420p",
 
     "-c:v",
-    "libvpx-vp9",
+    "prores_ks",
+
+    "-profile:v",
+    "4",
 
     "-pix_fmt",
-    "yuva420p",
-
-    "-b:v",
-    "2M",
+    "yuva444p10le",
 
     "-an",
 
-    "shloka_overlay.webm",
+    "shloka_overlay.mov",
 ]
 
 print("\nRunning FFmpeg...\n")
