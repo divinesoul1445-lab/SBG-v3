@@ -727,6 +727,186 @@ class Pipeline:
 
         return file_path
 
+
+
+    # ==========================================================
+    # CREATE SCENE 5 CTA OUTRO
+    # ==========================================================
+
+    def _create_cta_scene(
+        self,
+        verse_folder,
+        background_image,
+        audio_file,
+    ):
+        """
+        Create Scene 5 CTA outro.
+
+        This is intentionally independent from Scenes 1-4.
+        It does not modify any existing scene rendering logic.
+        """
+
+        scene_folder = self._scene_output_folder(
+            verse_folder,
+            5,
+        )
+
+        scene_folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        output_file = (
+            scene_folder
+            / "scene_video.mp4"
+        )
+
+        # ------------------------------------------------------
+        # CTA text
+        # ------------------------------------------------------
+
+        cta_text = (
+            "If this helped you, "
+            "like, comment & subscribe."
+        )
+
+        # ------------------------------------------------------
+        # Escape text for FFmpeg drawtext
+        # ------------------------------------------------------
+
+        escaped_text = (
+            cta_text
+            .replace("\\", "\\\\")
+            .replace(":", "\\:")
+            .replace("'", "\\'")
+            .replace(",", "\\,")
+        )
+
+        # ------------------------------------------------------
+        # Use the existing Scene 4 composed image as the
+        # CTA background.
+        #
+        # IMPORTANT:
+        # This does NOT modify the source image.
+        # ------------------------------------------------------
+
+        command = [
+            self.video.ffmpeg,
+
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+
+            "-loop",
+            "1",
+
+            "-i",
+            str(background_image),
+
+            "-i",
+            str(audio_file),
+
+            "-filter_complex",
+
+            (
+                "[0:v]"
+                "scale=1080:1920,"
+                "setsar=1,"
+                "format=yuv420p,"
+                "drawbox="
+                "x=80:"
+                "y=720:"
+                "w=920:"
+                "h=480:"
+                "color=black@0.72:"
+                "t=fill,"
+                "drawtext="
+                f"fontfile='C\\:/Windows/Fonts/arial.ttf':"
+                f"text='{escaped_text}':"
+                "fontcolor=white:"
+                "fontsize=58:"
+                "line_spacing=18:"
+                "text_align=center:"
+                "x=(w-text_w)/2:"
+                "y=(h-text_h)/2"
+                "[v]"
+            ),
+
+            "-map",
+            "[v]",
+
+            "-map",
+            "1:a",
+
+            "-c:v",
+            "libx264",
+
+            "-preset",
+            "medium",
+
+            "-crf",
+            "18",
+
+            "-pix_fmt",
+            "yuv420p",
+
+            "-r",
+            "24",
+
+            "-c:a",
+            "aac",
+
+            "-b:a",
+            "192k",
+
+            "-ar",
+            "48000",
+
+            "-shortest",
+
+            str(output_file),
+        ]
+
+        Logger.info(
+            "Creating Scene 5 CTA outro..."
+        )
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+
+            raise RuntimeError(
+                "Scene 5 CTA rendering failed:\n"
+                f"{result.stderr}"
+            )
+
+        if not output_file.exists():
+
+            raise FileNotFoundError(
+                "Scene 5 CTA video was not created:\n"
+                f"{output_file}"
+            )
+
+        if output_file.stat().st_size <= 0:
+
+            raise Exception(
+                "Scene 5 CTA video is empty:\n"
+                f"{output_file}"
+            )
+
+        Logger.success(
+            f"Scene 5 CTA video : "
+            f"{output_file}"
+        )
+
+        return output_file
+
+
     # ==========================================================
     # MAIN PIPELINE
     # ==========================================================
@@ -990,7 +1170,7 @@ class Pipeline:
                     f"to exist before Wav2Lip."
                 )
 
-            # ==================================================
+                        # ==================================================
             # 8A. WAV2LIP
             # ==================================================
 
@@ -998,58 +1178,255 @@ class Pipeline:
                 f"Running Wav2Lip for Scene {index}..."
             )
 
-            wav2lip_command = [
-                r"C:\ProgramData\miniconda3\envs\wav2lip_cpu\python.exe",
-                "inference.py",
-
-                "--checkpoint_path",
-                str(Path("checkpoints") / "wav2lip_gan.pth"),
-
-                "--face",
-                str(animated_video.resolve()),
-
-                "--audio",
-                str(audio_file.resolve()),
-
-                "--outfile",
-                str(lipsync_video.resolve()),
-
-                "--resize_factor",
-                "2",
-
-                "--out_height",
-                "1920",
-
-                "--pads",
-                "0",
-                "10",
-                "0",
-                "0",
-            ]
-
-            # --------------------------------------------------
-            # IMPORTANT:
-            #
-            # Wav2Lip's inference.py lives inside:
-            #
-            # C:\SBG\SBG-v4\Wav2Lip
-            #
-            # Therefore the subprocess working directory
-            # MUST be Wav2Lip.
-            # --------------------------------------------------
-
             wav2lip_dir = (
                 Path.cwd()
                 / "Wav2Lip"
             )
 
-            self._run_step(
-                f"Wav2Lip Scene {index}...",
-                subprocess.run,
-                wav2lip_command,
-                cwd=str(wav2lip_dir),
-                check=True,
-            )
+            # --------------------------------------------------
+            # Scene 4 SPECIAL CASE
+            #
+            # Scene 4 contains two faces.
+            # RetinaFace consistently selects Arjuna instead
+            # of Krishna.
+            #
+            # We therefore:
+            #   1. Crop Krishna from the source animation.
+            #   2. Run Wav2Lip on Krishna only.
+            #   3. Overlay the lip-synced Krishna face back onto
+            #      the original Scene 4 animation.
+            #
+            # DO NOT change the frozen scene renderer.
+            # --------------------------------------------------
+
+            if index == 4:
+
+                krishna_source = (
+                    scene_folder
+                    / "krishna_only.mp4"
+                )
+
+                krishna_lipsync = (
+                    scene_folder
+                    / "krishna_only_lipsync.mp4"
+                )
+
+                # ----------------------------------------------
+                # Step 1: Extract Krishna face
+                #
+                # Source animation is 720x1280.
+                # Krishna face region:
+                #   x = 310
+                #   y = 410
+                #   width  = 105
+                #   height = 125
+                # ----------------------------------------------
+
+                crop_command = [
+                    str(
+                        Path.cwd()
+                        / "tools"
+                        / "ffmpeg"
+                        / "bin"
+                        / "ffmpeg.exe"
+                    ),
+
+                    "-y",
+
+                    "-i",
+                    str(animated_video.resolve()),
+
+                    "-vf",
+                    "crop=105:125:310:410,scale=420:500",
+
+                    "-an",
+
+                    str(krishna_source.resolve()),
+                ]
+
+                self._run_step(
+                    "Extracting Krishna face for Scene 4...",
+                    subprocess.run,
+                    crop_command,
+                    check=True,
+                )
+
+                # ----------------------------------------------
+                # Step 2: Wav2Lip on Krishna ONLY
+                # ----------------------------------------------
+
+                wav2lip_command = [
+                    r"C:\ProgramData\miniconda3\envs\wav2lip_cpu\python.exe",
+
+                    "inference.py",
+
+                    "--checkpoint_path",
+                    str(
+                        Path("checkpoints")
+                        / "wav2lip_gan.pth"
+                    ),
+
+                    "--face",
+                    str(
+                        krishna_source.resolve()
+                    ),
+
+                    "--audio",
+                    str(
+                        audio_file.resolve()
+                    ),
+
+                    "--outfile",
+                    str(
+                        krishna_lipsync.resolve()
+                    ),
+
+                    "--resize_factor",
+                    "1",
+
+                    "--out_height",
+                    "500",
+
+                    "--pads",
+                    "0",
+                    "0",
+                    "0",
+                    "0",
+                ]
+
+                self._run_step(
+                    "Wav2Lip Krishna Scene 4...",
+                    subprocess.run,
+                    wav2lip_command,
+                    cwd=str(wav2lip_dir),
+                    check=True,
+                )
+
+                # ----------------------------------------------
+                # Step 3: Put the lip-synced Krishna face back
+                # onto the original Scene 4 animation.
+                #
+                # This preserves:
+                #   - Krishna's original appearance
+                #   - Arjuna completely untouched
+                #   - original Scene 4 composition
+                # ----------------------------------------------
+
+                replace_command = [
+                    str(
+                        Path.cwd()
+                        / "tools"
+                        / "ffmpeg"
+                        / "bin"
+                        / "ffmpeg.exe"
+                    ),
+
+                    "-y",
+
+                    "-i",
+                    str(animated_video.resolve()),
+
+                    "-i",
+                    str(krishna_lipsync.resolve()),
+
+                    "-filter_complex",
+                    (
+                        "[1:v]"
+                        "scale=105:125"
+                        "[krishna];"
+                        "[0:v][krishna]"
+                        "overlay=310:410:shortest=1"
+                        "[outv]"
+                    ),
+
+                    "-map",
+                    "[outv]",
+
+                    "-map",
+                    "1:a?",
+
+                    "-c:v",
+                    "libx264",
+
+                    "-preset",
+                    "medium",
+
+                    "-crf",
+                    "18",
+
+                    "-r",
+                    "24",
+
+                    "-pix_fmt",
+                    "yuv420p",
+
+                    "-c:a",
+                    "aac",
+
+                    "-shortest",
+
+                    str(lipsync_video.resolve()),
+                ]
+
+                self._run_step(
+                    "Rebuilding Scene 4 with Krishna lip-sync...",
+                    subprocess.run,
+                    replace_command,
+                    check=True,
+                )
+
+            # --------------------------------------------------
+            # Scenes 1-3 remain completely unchanged.
+            # --------------------------------------------------
+
+            else:
+
+                wav2lip_command = [
+                    r"C:\ProgramData\miniconda3\envs\wav2lip_cpu\python.exe",
+
+                    "inference.py",
+
+                    "--checkpoint_path",
+                    str(
+                        Path("checkpoints")
+                        / "wav2lip_gan.pth"
+                    ),
+
+                    "--face",
+                    str(
+                        animated_video.resolve()
+                    ),
+
+                    "--audio",
+                    str(
+                        audio_file.resolve()
+                    ),
+
+                    "--outfile",
+                    str(
+                        lipsync_video.resolve()
+                    ),
+
+                    "--resize_factor",
+                    "2",
+
+                    "--out_height",
+                    "1920",
+
+                    "--pads",
+                    "0",
+                    "10",
+                    "0",
+                    "0",
+                ]
+
+                self._run_step(
+                    f"Wav2Lip Scene {index}...",
+                    subprocess.run,
+                    wav2lip_command,
+                    cwd=str(wav2lip_dir),
+                    check=True,
+                )
 
             # --------------------------------------------------
             # Validate Wav2Lip output
@@ -1199,8 +1576,70 @@ class Pipeline:
             audio_files
         )
 
+
+                # ======================================================
+        # 9.5. CREATE SCENE 5 CTA OUTRO
         # ======================================================
-        # 10. MERGE ALL 4 SCENE VIDEOS
+
+        cta_narration = (
+            "If this helped you, "
+            "like, comment and subscribe."
+        )
+
+        cta_scene_folder = (
+            self._scene_output_folder(
+                verse_folder,
+                5,
+            )
+        )
+
+        cta_audio_file = self._run_step(
+            "Generating Scene 5 CTA narration...",
+            self.tts.generate_scene,
+            5,
+            cta_narration,
+            cta_scene_folder,
+        )
+
+        cta_audio_file = Path(
+            cta_audio_file
+        )
+
+        if not cta_audio_file.exists():
+
+            raise FileNotFoundError(
+                "Scene 5 CTA audio was not created:\n"
+                f"{cta_audio_file}"
+            )
+
+        # Use Scene 4's composed image as the CTA background.
+        #
+        # This creates a new Scene 5 video and does not modify
+        # Scene 4 or its source image.
+        #
+
+        cta_background = Path(
+            composed_image_files[3]
+        )
+
+        cta_video = self._create_cta_scene(
+            verse_folder=verse_folder,
+            background_image=cta_background,
+            audio_file=cta_audio_file,
+        )
+
+        scene_videos.append(
+            cta_video
+        )
+
+        Logger.success(
+            f"Scene 5 video : "
+            f"{cta_video}"
+        )
+
+
+        # ======================================================
+        # 10. MERGE ALL 5 SCENE VIDEOS
         #
         # Background music is added ONLY inside
         # merge_scenes().

@@ -743,10 +743,11 @@ class TTSGenerator:
             2,
             3,
             4,
+            5,
         ):
 
             raise ValueError(
-                "scene_number must be between 1 and 4."
+                "scene_number must be between 1 and 5."
             )
 
         if text is None:
