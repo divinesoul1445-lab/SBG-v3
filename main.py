@@ -60,4 +60,22 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import time
+
+    start_time = time.perf_counter()
+
+    try:
+        main()
+    finally:
+        elapsed = time.perf_counter() - start_time
+
+        hours, remainder = divmod(int(elapsed), 3600)
+        minutes, seconds = divmod(remainder, 60)
+
+        print()
+        print("=" * 60)
+        print(
+            f"TOTAL PIPELINE TIME: "
+            f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        )
+        print("=" * 60)
