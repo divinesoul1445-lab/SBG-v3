@@ -69,9 +69,13 @@ import edge_tts
 # VOICES
 # ============================================================
 
-ENGLISH_VOICE = "en-IN-PrabhatNeural"
+# ENGLISH_VOICE = "en-IN-NeerjaNeural"
 
-SANSKRIT_VOICE = "hi-IN-SwaraNeural"
+# SANSKRIT_VOICE = "hi-IN-MadhurNeural"
+
+FEMALE_VOICE = "en-IN-NeerjaNeural"
+MALE_ENGLISH_VOICE = "en-IN-PrabhatNeural"
+MALE_SANSKRIT_VOICE = "hi-IN-MadhurNeural"
 
 
 # ============================================================
@@ -96,15 +100,14 @@ class TTSGenerator:
     # SELECT VOICE
     # ========================================================
 
-    def _get_voice(
-        self,
-        scene_number: int,
-    ) -> str:
-
+    def _get_voice(self, scene_number):
         if scene_number == 2:
-            return SANSKRIT_VOICE
+            return MALE_SANSKRIT_VOICE
 
-        return ENGLISH_VOICE
+        if scene_number in (0, 5):
+            return FEMALE_VOICE
+
+        return MALE_ENGLISH_VOICE
 
     # ========================================================
     # SOURCE WORDS
@@ -739,6 +742,7 @@ class TTSGenerator:
         )
 
         if scene_number not in (
+            0,
             1,
             2,
             3,
@@ -747,7 +751,7 @@ class TTSGenerator:
         ):
 
             raise ValueError(
-                "scene_number must be between 1 and 5."
+                "scene_number must be between 0 and 5."
             )
 
         if text is None:

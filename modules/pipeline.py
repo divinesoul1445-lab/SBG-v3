@@ -812,6 +812,11 @@ class Pipeline:
             (
                 "[0:v]"
                 "scale=1080:1920,"
+                "zoompan="
+                "z='min(zoom+0.0005,1.12)':"
+                "x='iw/2-(iw/zoom/2)':"
+                "y='ih/2-(ih/zoom/2)':"
+                "d=1:s=1080x1920:fps=24,"
                 "setsar=1,"
                 "format=yuv420p,"
                 "drawbox="
@@ -904,6 +909,94 @@ class Pipeline:
             f"{output_file}"
         )
 
+        return output_file
+
+
+
+    # ==========================================================
+    # CREATE SCENE 0 OPENING
+    # ==========================================================
+
+    def _create_opening_scene(
+        self,
+        verse_folder,
+        background_image,
+        audio_file,
+    ):
+        """Render an animated welcome scene independently."""
+
+        scene_folder = self._scene_output_folder(
+            verse_folder,
+            0,
+        )
+
+        background_image = Path(background_image)
+        audio_file = Path(audio_file)
+
+        if not background_image.is_file():
+            raise FileNotFoundError(
+                f"Scene 0 image not found: {background_image}"
+            )
+
+        if not audio_file.is_file() or audio_file.stat().st_size == 0:
+            raise FileNotFoundError(
+                f"Scene 0 narration missing or empty: {audio_file}"
+            )
+
+        output_file = scene_folder / "scene_video.mp4"
+
+        command = [
+            self.video.ffmpeg,
+            "-hide_banner",
+            "-loglevel", "error",
+            "-y",
+            "-loop", "1",
+            "-i", str(background_image),
+            "-i", str(audio_file),
+            "-filter_complex",
+            (
+                "[0:v]"
+                "scale=1080:1920:force_original_aspect_ratio=increase,"
+                "crop=1080:1920,"
+                "zoompan="
+                "z='min(zoom+0.0005,1.12)':"
+                "x='iw/2-(iw/zoom/2)':"
+                "y='ih/2-(ih/zoom/2)':"
+                "d=1:s=1080x1920:fps=24,"
+                "setsar=1,"
+                "format=yuv420p[v]"
+            ),
+            "-map", "[v]",
+            "-map", "1:a",
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "18",
+            "-pix_fmt", "yuv420p",
+            "-r", "24",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-ar", "48000",
+            "-shortest",
+            str(output_file),
+        ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Scene 0 rendering failed:\n" + result.stderr
+            )
+
+        if not output_file.is_file() or output_file.stat().st_size == 0:
+            raise RuntimeError(
+                f"Scene 0 video was not created: {output_file}"
+            )
+
+        Logger.success(f"Scene 0 video: {output_file}")
         return output_file
 
 
@@ -1376,12 +1469,26 @@ class Pipeline:
                 )
 
             # --------------------------------------------------
-            # Scenes 1-3 remain completely unchanged.
+            # Scene 3: Arjuna is listening; no lip-sync.
+            # --------------------------------------------------
+
+            elif index == 3:
+
+                lipsync_video = animated_video
+
+                Logger.info(
+                    "Scene 3: Skipping Arjuna lip-sync; "
+                    "using the original animated scene."
+                )
+
+            # --------------------------------------------------
+            # Scenes 1 and 2 use the existing Wav2Lip path.
+            # Scene 4 retains its dedicated Krishna lip-sync.
             # --------------------------------------------------
 
             else:
 
-                wav2lip_command = [
+                wav2lip_command  = [
                     r"C:\ProgramData\miniconda3\envs\wav2lip_cpu\python.exe",
 
                     "inference.py",
@@ -1569,6 +1676,34 @@ class Pipeline:
             )
         
         # ======================================================
+        # 8.5. CREATE SCENE 0 OPENING
+        # ======================================================
+
+        opening_narration = (
+            "Welcome to the Bhagavad Gita. "
+            "Discover timeless wisdom, one verse at a time."
+        )
+
+        opening_scene_folder = self._scene_output_folder(
+            verse_folder,
+            0,
+        )
+
+        opening_audio_file = self._run_step(
+            "Generating Scene 0 welcome narration...",
+            self.tts.generate_scene,
+            0,
+            opening_narration,
+            opening_scene_folder,
+        )
+
+        opening_video = self._create_opening_scene(
+            verse_folder=verse_folder,
+            background_image=Path("assets/images/Scene0-Opening.png"),
+            audio_file=opening_audio_file,
+        )
+
+        # ======================================================
         # 9. PRINT SCENE DURATIONS
         # ======================================================
 
@@ -1612,15 +1747,16 @@ class Pipeline:
                 f"{cta_audio_file}"
             )
 
-        # Use Scene 4's composed image as the CTA background.
-        #
-        # This creates a new Scene 5 video and does not modify
-        # Scene 4 or its source image.
-        #
-
+        # Use the dedicated Scene 5 CTA image.
+        # Scenes 1-4 remain unchanged.
         cta_background = Path(
-            composed_image_files[3]
+            "assets/images/Scene5-likeIncentive.png"
         )
+
+        if not cta_background.is_file():
+            raise FileNotFoundError(
+                f"Scene 5 CTA image not found: {cta_background}"
+            )
 
         cta_video = self._create_cta_scene(
             verse_folder=verse_folder,
@@ -1648,7 +1784,7 @@ class Pipeline:
         video_file = self._run_step(
             "Merging scene videos...",
             self.video.merge_scenes,
-            scene_videos,
+            [opening_video, *scene_videos],
             verse_folder,
         )
 
