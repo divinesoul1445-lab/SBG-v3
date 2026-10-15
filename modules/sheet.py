@@ -1,4 +1,4 @@
-"""
+﻿"""
 Excel Content Manager - SBG V3
 
 The Excel Content Master is the approved source of truth
@@ -38,7 +38,7 @@ from openpyxl import load_workbook
 
 # ============================================================
 
-EXCEL_FILE = "C:\\SBG\\SBG-v3\\data\\SBG_V3_Content_Master_Chapter1_Verse1.xlsx"
+EXCEL_FILE = "C:\\SBG\\SBG-v4\\data\\Bhagavad_Gita_Content_Master_Chapter1_Verses1-5.xlsx"
 
 # ============================================================
 
@@ -49,7 +49,7 @@ EXCEL_FILE = "C:\\SBG\\SBG-v3\\data\\SBG_V3_Content_Master_Chapter1_Verse1.xlsx"
 class ExcelContentManager:
 
 
-    SHEET_NAME = "Content_Master"
+    SHEET_NAME = "Content_Master_V1-5"
 
     # --------------------------------------------------------
     # DEVELOPMENT LOCK
@@ -257,7 +257,7 @@ class ExcelContentManager:
         ):
 
             raise Exception(
-                "SBG V3 is currently locked to "
+                "SBG-v4 is currently locked to "
                 "Chapter 1, Verse 1 only."
             )
 
@@ -415,7 +415,7 @@ class ExcelContentManager:
         ):
 
             raise Exception(
-                "SBG V3 is currently locked to "
+                "SBG-v4 is currently locked to "
                 "Chapter 1, Verse 1 only."
             )
 
@@ -565,3 +565,6 @@ class ExcelContentManager:
         ):
 
             return None
+
+
+
