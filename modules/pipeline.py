@@ -623,72 +623,59 @@ class Pipeline:
         scene_videos,
         final_video,
     ):
+        verse_folder = Path(verse_folder)
 
         data = {
-
             "chapter": 1,
-
             "verse": 1,
-
             "scenes": [],
-
-            "final_video": (
-                str(final_video)
-                if final_video is not None
-                else None
-            ),
+            "final_video": str(final_video) if final_video is not None else None,
         }
 
-        for index in range(
-            4
-        ):
+        # Scene 0: opening
+        opening_folder = self._scene_output_folder(verse_folder, 0)
+        opening_json = opening_folder / "scene.json"
+        if opening_json.is_file():
+            opening = json.loads(opening_json.read_text(encoding="utf-8-sig"))
+            data["scenes"].append({
+                "scene": 0,
+                "narration": opening.get("narration"),
+                "source_image": str(Path("assets/images/Scene0-Opening.png")),
+                "composed_image": opening.get("composed_image_file"),
+                "audio": opening.get("audio_file"),
+                "subtitle": opening.get("subtitle_file"),
+                "video": str(opening_folder / "scene_video.mp4"),
+            })
 
-            data[
-                "scenes"
-            ].append({
-
+        # Existing Scenes 1-4: preserve their established metadata.
+        for index in range(4):
+            data["scenes"].append({
                 "scene": index + 1,
+                "narration": scenes[index],
+                "source_image": str(source_image_files[index]),
+                "composed_image": str(composed_image_files[index]),
+                "audio": str(audio_files[index]),
+                "subtitle": str(subtitle_files[index]),
+                "video": str(scene_videos[index]),
+            })
 
-                "narration": scenes[
-                    index
-                ],
-
-                "source_image": str(
-                    source_image_files[
-                        index
-                    ]
-                ),
-
-                "composed_image": str(
-                    composed_image_files[
-                        index
-                    ]
-                ),
-
-                "audio": str(
-                    audio_files[
-                        index
-                    ]
-                ),
-
-                "subtitle": str(
-                    subtitle_files[
-                        index
-                    ]
-                ),
-
-                "video": str(
-                    scene_videos[
-                        index
-                    ]
-                ),
+        # Scene 5: CTA outro
+        cta_folder = self._scene_output_folder(verse_folder, 5)
+        cta_json = cta_folder / "scene.json"
+        if cta_json.is_file():
+            cta = json.loads(cta_json.read_text(encoding="utf-8-sig"))
+            data["scenes"].append({
+                "scene": 5,
+                "narration": cta.get("narration"),
+                "source_image": str(Path("assets/images/Scene5-likeIncentive.png")),
+                "composed_image": cta.get("composed_image_file"),
+                "audio": cta.get("audio_file"),
+                "subtitle": cta.get("subtitle_file"),
+                "video": str(cta_folder / "scene_video.mp4"),
             })
 
         self._save_json(
-            Path(
-                verse_folder
-            )
-            / "pipeline_output.json",
+            verse_folder / "pipeline_output.json",
             data,
         )
 
@@ -766,8 +753,9 @@ class Pipeline:
         # ------------------------------------------------------
 
         cta_text = (
-            "If this helped you, "
-            "like, comment & subscribe."
+            "Please write\n"
+            "Jai Shree Krishna\n"
+            "in the comments section."
         )
 
         # ------------------------------------------------------
@@ -819,22 +807,18 @@ class Pipeline:
                 "d=1:s=1080x1920:fps=24,"
                 "setsar=1,"
                 "format=yuv420p,"
-                "drawbox="
-                "x=80:"
-                "y=720:"
-                "w=920:"
-                "h=480:"
-                "color=black@0.72:"
-                "t=fill,"
-                "drawtext="
-                f"fontfile='C\\:/Windows/Fonts/arial.ttf':"
-                f"text='{escaped_text}':"
-                "fontcolor=white:"
-                "fontsize=58:"
-                "line_spacing=18:"
-                "text_align=center:"
-                "x=(w-text_w)/2:"
-                "y=(h-text_h)/2"
+                "drawtext=fontfile='C\\:/Windows/Fonts/arial.ttf':"
+                "text='Please write':"
+                "fontcolor=white:fontsize=44:"
+                "x=(w-text_w)/2:y=1584,"
+                "drawtext=fontfile='C\\:/Windows/Fonts/arial.ttf':"
+                "text='Jai Shree Krishna':"
+                "fontcolor=white:fontsize=44:"
+                "x=(w-text_w)/2:y=1664,"
+                "drawtext=fontfile='C\\:/Windows/Fonts/arial.ttf':"
+                "text='in the comments section.':"
+                "fontcolor=white:fontsize=44:"
+                "x=(w-text_w)/2:y=1744"
                 "[v]"
             ),
 
@@ -903,6 +887,25 @@ class Pipeline:
                 "Scene 5 CTA video is empty:\n"
                 f"{output_file}"
             )
+
+        self._save_json(
+            scene_folder / "scene.json",
+            {
+                "chapter": 1,
+                "verse": 1,
+                "scene": 5,
+                "narration": (
+                    "Please write Jai Shree Krishna "
+                    "in the comments section. "
+                    "If this helped you, please like, comment and subscribe."
+                ),
+                "source_image_file": str(background_image),
+                "composed_image_file": str(background_image),
+                "audio_file": str(audio_file),
+                "subtitle_file": None,
+                "video_file": str(output_file),
+            },
+        )
 
         Logger.success(
             f"Scene 5 CTA video : "
@@ -995,6 +998,24 @@ class Pipeline:
             raise RuntimeError(
                 f"Scene 0 video was not created: {output_file}"
             )
+
+        self._save_json(
+            scene_folder / "scene.json",
+            {
+                "chapter": 1,
+                "verse": 1,
+                "scene": 0,
+                "narration": (
+                    "Welcome to the Bhagavad Gita. "
+                    "Discover timeless wisdom, one verse at a time."
+                ),
+                "source_image_file": str(background_image),
+                "composed_image_file": str(background_image),
+                "audio_file": str(audio_file),
+                "subtitle_file": None,
+                "video_file": str(output_file),
+            },
+        )
 
         Logger.success(f"Scene 0 video: {output_file}")
         return output_file
@@ -1717,8 +1738,9 @@ class Pipeline:
         # ======================================================
 
         cta_narration = (
-            "If this helped you, "
-            "like, comment and subscribe."
+            "Please write Jai Shree Krishna "
+            "in the comments section. "
+            "If this helped you, please like, comment and subscribe."
         )
 
         cta_scene_folder = (
@@ -1913,5 +1935,6 @@ class Pipeline:
         )
 
         return True
+
 
 

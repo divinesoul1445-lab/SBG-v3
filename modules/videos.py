@@ -2556,6 +2556,17 @@ class VideoRenderer:
         # FILTER
         # ------------------------------------------------------
 
+        # Use the original narration audio, not Wav2Lip's audio.
+        audio_input_index = sum(
+            1 for arg in cmd if arg == "-i"
+        )
+        
+        # Add the original narration as a separate audio input.
+        cmd += [
+            "-i",
+            str(audio_file),
+        ]
+
         cmd += [
             "-filter_complex",
             filter_complex,
@@ -2572,7 +2583,7 @@ class VideoRenderer:
             # --------------------------------------------------
 
             "-map",
-            "0:a?",
+            f"{audio_input_index}:a:0",
 
             # --------------------------------------------------
             # VIDEO
