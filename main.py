@@ -71,7 +71,7 @@ def main():
     for destination in destinations:
         destination.mkdir(parents=True, exist_ok=True)
 
-    for verse_number in (2, 3):
+    for verse_number in range(4, 11):
         print("\\n" + "=" * 60)
         print(f"PROCESSING CHAPTER 1, VERSE {verse_number}")
         print("=" * 60)
