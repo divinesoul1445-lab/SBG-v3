@@ -54,12 +54,69 @@ def export_final_videos():
     print(f"Export complete: {copied} video(s) in {destination.resolve()}")
 
 
+
+def ensure_tracking_columns(excel_manager):
+    """Add render/export tracking columns without changing Upload Status."""
+    from openpyxl import load_workbook
+
+    workbook_path = Path(excel_manager.excel_file)
+    workbook = load_workbook(workbook_path)
+    try:
+        worksheet = workbook[excel_manager.SHEET_NAME]
+        headers = {
+            str(cell.value).strip(): cell.column
+            for cell in worksheet[1]
+            if cell.value is not None
+        }
+        for header in (
+            "Render Status",
+            "Local Export Status",
+            "Google Drive Status",
+        ):
+            if header not in headers:
+                worksheet.cell(1, worksheet.max_column + 1).value = header
+        workbook.save(workbook_path)
+    finally:
+        workbook.close()
+
+
+def update_tracking_status(excel_manager, chapter, verse, **updates):
+    """Write status fields for one verse to the content workbook."""
+    from openpyxl import load_workbook
+
+    workbook_path = Path(excel_manager.excel_file)
+    workbook = load_workbook(workbook_path)
+    try:
+        worksheet = workbook[excel_manager.SHEET_NAME]
+        headers = {
+            str(cell.value).strip(): cell.column
+            for cell in worksheet[1]
+            if cell.value is not None
+        }
+        for row in range(2, worksheet.max_row + 1):
+            row_chapter = excel_manager._to_int(
+                worksheet.cell(row, headers["Chapter"]).value
+            )
+            row_verse = excel_manager._to_int(
+                worksheet.cell(row, headers["Verse"]).value
+            )
+            if row_chapter == chapter and row_verse == verse:
+                for header, value in updates.items():
+                    worksheet.cell(row, headers[header]).value = value
+                workbook.save(workbook_path)
+                return
+        raise ValueError(f"Chapter {chapter}, Verse {verse} not found in workbook")
+    finally:
+        workbook.close()
+
+
 def main():
     # Test Chapter 1, Verses 2 and 3.
     # Copy each completed video to both destinations immediately.
     import shutil
 
     pipeline = Pipeline()
+    ensure_tracking_columns(pipeline.excel)
     failures = []
     successes = []
 
@@ -77,9 +134,21 @@ def main():
         print("=" * 60)
 
         try:
+            update_tracking_status(
+                pipeline.excel, 1, verse_number,
+                **{
+                    "Render Status": "Processing",
+                    "Local Export Status": "Pending",
+                    "Google Drive Status": "Pending",
+                },
+            )
             success = pipeline.run(chapter=1, verse=verse_number)
 
             if not success:
+                update_tracking_status(
+                    pipeline.excel, 1, verse_number,
+                    **{"Render Status": "Failed"},
+                )
                 failures.append((verse_number, "pipeline returned False"))
                 print(f"FAILED: Verse {verse_number}: pipeline returned False")
                 continue
@@ -100,6 +169,20 @@ def main():
                 print(f"FAILED TO COPY: {source_video} not found")
                 continue
 
+            if source_video.stat().st_size <= 0:
+                update_tracking_status(
+                    pipeline.excel, 1, verse_number,
+                    **{"Render Status": "Failed"},
+                )
+                failures.append((verse_number, f"merged video is empty: {source_video}"))
+                print(f"FAILED: Empty final video: {source_video}")
+                continue
+
+            update_tracking_status(
+                pipeline.excel, 1, verse_number,
+                **{"Render Status": "Completed"},
+            )
+
             target_name = f"Chapter_001Verse_{verse_number:03d}.mp4"
             copy_errors = []
 
@@ -107,8 +190,28 @@ def main():
                 target = destination / target_name
                 try:
                     shutil.copy2(source_video, target)
-                    print(f"COPIED: {target.resolve()}")
+                    if not target.is_file() or target.stat().st_size != source_video.stat().st_size:
+                        raise IOError("Copied file verification failed")
+                    status_header = (
+                        "Local Export Status"
+                        if destination == destinations[0]
+                        else "Google Drive Status"
+                    )
+                    update_tracking_status(
+                        pipeline.excel, 1, verse_number,
+                        **{status_header: "Completed"},
+                    )
+                    print(f"COPIED AND VERIFIED: {target.resolve()}")
                 except Exception as copy_exc:
+                    status_header = (
+                        "Local Export Status"
+                        if destination == destinations[0]
+                        else "Google Drive Status"
+                    )
+                    update_tracking_status(
+                        pipeline.excel, 1, verse_number,
+                        **{status_header: "Failed"},
+                    )
                     copy_errors.append(f"{target}: {copy_exc}")
                     print(f"COPY FAILED: {target}: {copy_exc}")
 
