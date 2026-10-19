@@ -1,4 +1,4 @@
-﻿"""
+"""
 Excel Content Manager - SBG V3
 
 The Excel Content Master is the approved source of truth
@@ -38,7 +38,7 @@ from openpyxl import load_workbook
 
 # ============================================================
 
-EXCEL_FILE = "C:\\SBG\\SBG-v4\\data\\Bhagavad_Gita_Content_Master_Chapter1_Verses1-5.xlsx"
+EXCEL_FILE = "C:\\SBG\\SBG-v4\\data\\Bhagavad_Gita_Chapter1_All_47_Verses.xlsx"
 
 # ============================================================
 
@@ -49,7 +49,7 @@ EXCEL_FILE = "C:\\SBG\\SBG-v4\\data\\Bhagavad_Gita_Content_Master_Chapter1_Verse
 class ExcelContentManager:
 
 
-    SHEET_NAME = "Content_Master_V1-5"
+    SHEET_NAME = "Content_Master_V1-47"
 
     # --------------------------------------------------------
     # DEVELOPMENT LOCK
@@ -246,22 +246,6 @@ class ExcelContentManager:
     ) -> dict:
 
         # ----------------------------------------------------
-        # Development safety lock
-        #
-        # Nothing except Chapter 1 / Verse 1 is allowed.
-        # ----------------------------------------------------
-
-        if (
-            chapter != self.ACTIVE_CHAPTER
-            or verse != self.ACTIVE_VERSE
-        ):
-
-            raise Exception(
-                "SBG-v4 is currently locked to "
-                "Chapter 1, Verse 1 only."
-            )
-
-        # ----------------------------------------------------
         # Search Excel
         # ----------------------------------------------------
 
@@ -404,20 +388,6 @@ class ExcelContentManager:
         verse: int,
         status: str,
     ):
-
-        # ----------------------------------------------------
-        # Development safety lock
-        # ----------------------------------------------------
-
-        if (
-            chapter != self.ACTIVE_CHAPTER
-            or verse != self.ACTIVE_VERSE
-        ):
-
-            raise Exception(
-                "SBG-v4 is currently locked to "
-                "Chapter 1, Verse 1 only."
-            )
 
         workbook = load_workbook(
             filename=self.excel_file

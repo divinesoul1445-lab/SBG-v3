@@ -331,25 +331,8 @@ class VideoRenderer:
         self,
         command,
     ):
-
-        print()
-        print("=" * 80)
-        print("FFMPEG COMMAND")
-        print("=" * 80)
-
-        print(
-            " ".join(
-                (
-                    f'"{item}"'
-                    if " " in str(item)
-                    else str(item)
-                )
-                for item in command
-            )
-        )
-
-        print("=" * 80)
-        print()
+        # Full FFmpeg command output disabled to keep logs concise.
+        return
 
 
     # ==========================================================

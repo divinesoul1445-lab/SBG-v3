@@ -1,4 +1,4 @@
-﻿"""
+"""
 SBG V3 Pipeline
 
 CURRENT DEVELOPMENT MODE:
@@ -234,51 +234,9 @@ class Pipeline:
     # LOAD CHAPTER 1 VERSE 1
     # ==========================================================
 
-    def _get_verse(
-        self,
-    ):
-
-        """
-        This pipeline is intentionally locked to:
-
-            Chapter 1
-            Verse 1
-        """
-
-        for row in self.excel._rows():
-
-            try:
-
-                chapter = int(
-                    row.get(
-                        "Chapter"
-                    )
-                )
-
-                verse = int(
-                    row.get(
-                        "Verse"
-                    )
-                )
-
-            except (
-                TypeError,
-                ValueError,
-            ):
-
-                continue
-
-            if (
-                chapter == 1
-                and verse == 1
-            ):
-
-                return row
-
-        raise Exception(
-            "Chapter 1, Verse 1 was not found "
-            "in the Excel content master."
-        )
+    def _get_verse(self, chapter=1, verse=1):
+        """Load the requested verse from the approved workbook."""
+        return self.excel.get_verse(chapter, verse)
 
     # ==========================================================
     # GET APPROVED SCENE NARRATIONS
@@ -326,7 +284,7 @@ class Pipeline:
 
                 raise Exception(
                     f"Scene {index} narration is empty "
-                    f"for Chapter 1, Verse 1."
+                    f"for Chapter {self.current_chapter}, Verse {self.current_verse}."
                 )
 
         return [
@@ -541,9 +499,9 @@ class Pipeline:
 
         data = {
 
-            "chapter": 1,
+            "chapter": self.current_chapter,
 
-            "verse": 1,
+            "verse": self.current_verse,
 
             "scene": scene_number,
 
@@ -626,8 +584,8 @@ class Pipeline:
         verse_folder = Path(verse_folder)
 
         data = {
-            "chapter": 1,
-            "verse": 1,
+            "chapter": self.current_chapter,
+            "verse": self.current_verse,
             "scenes": [],
             "final_video": str(final_video) if final_video is not None else None,
         }
@@ -891,8 +849,8 @@ class Pipeline:
         self._save_json(
             scene_folder / "scene.json",
             {
-                "chapter": 1,
-                "verse": 1,
+                "chapter": self.current_chapter,
+                "verse": self.current_verse,
                 "scene": 5,
                 "narration": (
                     "Please write Jai Shree Krishna "
@@ -1002,8 +960,8 @@ class Pipeline:
         self._save_json(
             scene_folder / "scene.json",
             {
-                "chapter": 1,
-                "verse": 1,
+                "chapter": self.current_chapter,
+                "verse": self.current_verse,
                 "scene": 0,
                 "narration": (
                     "Welcome to the Bhagavad Gita. "
@@ -1025,9 +983,12 @@ class Pipeline:
     # MAIN PIPELINE
     # ==========================================================
 
-    def run(
-        self,
-    ):
+    def run(self, chapter=1, verse=1):
+        if chapter != 1 or not 1 <= verse <= 47:
+            raise ValueError("This batch supports Chapter 1, Verses 1-47 only.")
+        self.current_chapter = chapter
+        self.current_verse = verse
+
 
         Logger.section(
             "Shree Bhagavad Gita AI Video Generator (V3)"
@@ -1038,8 +999,10 @@ class Pipeline:
         # ======================================================
 
         verse_data = self._run_step(
-            "Loading Chapter 1, Verse 1...",
+            f"Loading Chapter {chapter}, Verse {verse}...",
             self._get_verse,
+            chapter,
+            verse,
         )
 
         # ======================================================
@@ -1049,8 +1012,8 @@ class Pipeline:
         verse_folder = self._run_step(
             "Preparing output folder...",
             self._verse_output_folder,
-            1,
-            1,
+            chapter,
+            verse,
         )
 
         # ======================================================
@@ -1102,8 +1065,7 @@ class Pipeline:
         ):
 
             raise Exception(
-                "Sanskrit shloka is empty "
-                "for Chapter 1, Verse 1."
+                f"Sanskrit shloka is empty for Chapter {chapter}, Verse {verse}."
             )
 
         composed_image_files = (
@@ -1113,8 +1075,8 @@ class Pipeline:
                 verse_folder,
                 source_image_files,
                 str(shloka).strip(),
-                1,
-                1,
+                chapter,
+                verse,
             )
         )
 

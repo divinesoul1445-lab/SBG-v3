@@ -602,32 +602,7 @@ class TTSGenerator:
         # DEBUG FINAL MAPPING
         # ====================================================
 
-        print(
-            "FINAL SUBTITLE WORDS:"
-        )
-
-        print()
-
-        for index, item in enumerate(
-            word_boundaries,
-            start=1,
-        ):
-
-            print(
-                f"{index:02d}  "
-                f"{item['start']:7.3f}"
-                f" -> "
-                f"{item['end']:7.3f}   "
-                f"{item['text']}"
-            )
-
-        print()
-
-        print(
-            "=" * 80
-        )
-
-        print()
+        # Verbose per-word timing diagnostics disabled.
 
         # ====================================================
         # SAVE JSON

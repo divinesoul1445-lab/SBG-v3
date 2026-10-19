@@ -55,12 +55,79 @@ def export_final_videos():
 
 
 def main():
-    clear_output_folder()
+    # Test Chapter 1, Verses 2 and 3.
+    # Copy each completed video to both destinations immediately.
+    import shutil
 
     pipeline = Pipeline()
-    pipeline.run()
+    failures = []
+    successes = []
 
-    export_final_videos()
+    destinations = [
+        Path("final_videos"),
+        Path(r"G:\\My Drive\\Final Verses"),
+    ]
+
+    for destination in destinations:
+        destination.mkdir(parents=True, exist_ok=True)
+
+    for verse_number in (2, 3):
+        print("\\n" + "=" * 60)
+        print(f"PROCESSING CHAPTER 1, VERSE {verse_number}")
+        print("=" * 60)
+
+        try:
+            success = pipeline.run(chapter=1, verse=verse_number)
+
+            if not success:
+                failures.append((verse_number, "pipeline returned False"))
+                print(f"FAILED: Verse {verse_number}: pipeline returned False")
+                continue
+
+            source_video = (
+                Path("output")
+                / "chapter_001"
+                / f"verse_{verse_number:03d}"
+                / "final"
+                / "merged_video.mp4"
+            )
+
+            if not source_video.is_file():
+                failures.append((
+                    verse_number,
+                    f"merged video not found: {source_video}"
+                ))
+                print(f"FAILED TO COPY: {source_video} not found")
+                continue
+
+            target_name = f"Chapter_001Verse_{verse_number:03d}.mp4"
+            copy_errors = []
+
+            for destination in destinations:
+                target = destination / target_name
+                try:
+                    shutil.copy2(source_video, target)
+                    print(f"COPIED: {target.resolve()}")
+                except Exception as copy_exc:
+                    copy_errors.append(f"{target}: {copy_exc}")
+                    print(f"COPY FAILED: {target}: {copy_exc}")
+
+            if copy_errors:
+                failures.append((verse_number, "; ".join(copy_errors)))
+            else:
+                successes.append(verse_number)
+                print(f"SUCCESS: Verse {verse_number} copied to both folders.")
+
+        except Exception as exc:
+            failures.append((verse_number, str(exc)))
+            print(f"FAILED: Verse {verse_number}: {exc}")
+
+    print("\\n" + "=" * 60)
+    print(f"Successfully copied to both folders: {successes}")
+    print(f"Failures: {len(failures)}")
+
+    for verse_number, error in failures:
+        print(f"Verse {verse_number}: {error}")
 
 
 if __name__ == "__main__":
