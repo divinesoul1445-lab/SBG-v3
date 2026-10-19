@@ -128,7 +128,7 @@ def main():
     for destination in destinations:
         destination.mkdir(parents=True, exist_ok=True)
 
-    for verse_number in range(4, 11):
+    for verse_number in range(1, 11):
         print("\\n" + "=" * 60)
         print(f"PROCESSING CHAPTER 1, VERSE {verse_number}")
         print("=" * 60)
@@ -252,3 +252,4 @@ if __name__ == "__main__":
             f"{hours:02d}:{minutes:02d}:{seconds:02d}"
         )
         print("=" * 60)
+

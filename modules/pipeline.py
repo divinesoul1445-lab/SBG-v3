@@ -1,4 +1,4 @@
-"""
+﻿"""
 SBG V3 Pipeline
 
 CURRENT DEVELOPMENT MODE:
@@ -983,6 +983,73 @@ class Pipeline:
     # MAIN PIPELINE
     # ==========================================================
 
+    def _create_header_corrected_animation(
+        self,
+        animated_video,
+        scene_folder,
+        scene_number,
+    ):
+        """Overlay this verse's correct chapter/shloka header locally."""
+        animated_video = Path(animated_video)
+        scene_folder = Path(scene_folder)
+        composed_image = scene_folder / "composed_image.png"
+        output_video = scene_folder / f"animated_scene{scene_number}_header_corrected.mp4"
+        overlay_image = scene_folder / "header_overlay.png"
+
+        if not composed_image.is_file():
+            Logger.warning(
+                f"Composed image missing; keeping original animation: {composed_image}"
+            )
+            return animated_video
+
+        # Create a transparent 720x1280 overlay from the current verse's image.
+        from PIL import Image
+
+        image = Image.open(composed_image).convert("RGB").resize(
+            (720, 1280), Image.Resampling.LANCZOS
+        )
+        top, bottom = 72, 145
+        strip = image.crop((0, top, 720, bottom)).convert("RGBA")
+
+        width, height = strip.size
+        alpha = Image.new("L", (width, height), 255)
+        pixels = alpha.load()
+        feather = 8
+        for y in range(feather):
+            value = int(255 * (y + 1) / feather)
+            for x in range(width):
+                pixels[x, y] = value
+                pixels[x, height - 1 - y] = value
+
+        strip.putalpha(alpha)
+        overlay = Image.new("RGBA", (720, 1280), (0, 0, 0, 0))
+        overlay.alpha_composite(strip, (0, top))
+        overlay.save(overlay_image)
+
+        command = [
+            str(self.video.ffmpeg),
+            "-hide_banner", "-loglevel", "error", "-y",
+            "-i", str(animated_video.resolve()),
+            "-loop", "1", "-i", str(overlay_image.resolve()),
+            "-filter_complex",
+            "[0:v][1:v]overlay=0:0:format=auto,format=yuv420p[v]",
+            "-map", "[v]", "-map", "0:a?",
+            "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
+            "-c:a", "copy", "-shortest",
+            str(output_video.resolve()),
+        ]
+
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0 or not output_video.is_file() or output_video.stat().st_size == 0:
+            Logger.warning(
+                f"Header overlay failed for Scene {scene_number}; using original animation. "
+                f"{result.stderr[-1000:]}"
+            )
+            return animated_video
+
+        Logger.info(f"Verse-specific header applied: {output_video}")
+        return output_video
+
     def run(self, chapter=1, verse=1):
         if chapter != 1 or not 1 <= verse <= 47:
             raise ValueError("This batch supports Chapter 1, Verses 1-47 only.")
@@ -1202,11 +1269,30 @@ class Pipeline:
                 / "narration.json"
             )
 
+            animations_dir = Path.cwd() / "assets" / "animations"
+
+            verse_specific_animation = (
+                animations_dir / f"animated_scene{index}_verse{verse:03d}.mp4"
+            )
+
+            shared_animation = (
+                animations_dir / f"animated_scene{index}.mp4"
+            )
+
             animated_video = (
-                Path.cwd()
-                / "assets"
-                / "animations"
-                / f"animated_scene{index}.mp4"
+                verse_specific_animation
+                if verse_specific_animation.exists()
+                else shared_animation
+            )
+
+            animated_video = self._create_header_corrected_animation(
+                animated_video,
+                scene_folder,
+                index,
+            )
+
+            Logger.info(
+                f"Scene {index} animation source: {animated_video}"
             )
 
             lipsync_video = (
