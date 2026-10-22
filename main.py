@@ -5,6 +5,20 @@ import re
 from modules.pipeline import Pipeline
 
 
+
+import os
+import logging
+import warnings
+
+# Suppress routine library logging
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+logging.disable(logging.WARNING)
+warnings.filterwarnings("ignore")
+
+
 def clear_output_folder():
     output_folder = Path("output")
 
@@ -110,123 +124,221 @@ def update_tracking_status(excel_manager, chapter, verse, **updates):
         workbook.close()
 
 
+def get_tracking_status(excel_manager, chapter, verse):
+    """Read the current status of a verse from Excel."""
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(excel_manager.excel_file, read_only=True)
+    try:
+        worksheet = workbook[excel_manager.SHEET_NAME]
+        headers = {
+            str(cell.value).strip(): cell.column
+            for cell in worksheet[1]
+            if cell.value is not None
+        }
+
+        for row in range(2, worksheet.max_row + 1):
+            ch = excel_manager._to_int(
+                worksheet.cell(row, headers["Chapter"]).value
+            )
+            vs = excel_manager._to_int(
+                worksheet.cell(row, headers["Verse"]).value
+            )
+
+            if ch == chapter and vs == verse:
+                return {
+                    name: str(worksheet.cell(row, col).value or "").strip()
+                    for name, col in headers.items()
+                    if name in (
+                        "Render Status",
+                        "Local Export Status",
+                        "Google Drive Status",
+                    )
+                }
+
+        raise ValueError(
+            f"Chapter {chapter}, Verse {verse} not found in Excel"
+        )
+    finally:
+        workbook.close()
+
+
 def main():
-    # Test Chapter 1, Verses 2 and 3.
-    # Copy each completed video to both destinations immediately.
     import shutil
 
     pipeline = Pipeline()
     ensure_tracking_columns(pipeline.excel)
+
     failures = []
     successes = []
 
     destinations = [
         Path("final_videos"),
-        Path(r"G:\\My Drive\\Final Verses"),
+        Path(r"G:\My Drive\Final Verses"),
     ]
 
     for destination in destinations:
         destination.mkdir(parents=True, exist_ok=True)
 
     for verse_number in range(1, 11):
-        print("\\n" + "=" * 60)
-        print(f"PROCESSING CHAPTER 1, VERSE {verse_number}")
+        chapter = 1
+        target_name = f"Chapter_{chapter:03d}Verse_{verse_number:03d}.mp4"
+
+        output_video = (
+            Path("output")
+            / "chapter_001"
+            / f"verse_{verse_number:03d}"
+            / "final"
+            / "merged_video.mp4"
+        )
+
+        local_video = destinations[0] / target_name
+        drive_video = destinations[1] / target_name
+
+        print("\n" + "=" * 60)
+        print(f"CHAPTER {chapter}, VERSE {verse_number}")
         print("=" * 60)
 
         try:
-            update_tracking_status(
-                pipeline.excel, 1, verse_number,
-                **{
-                    "Render Status": "Processing",
-                    "Local Export Status": "Pending",
-                    "Google Drive Status": "Pending",
-                },
-            )
-            success = pipeline.run(chapter=1, verse=verse_number)
-
-            if not success:
-                update_tracking_status(
-                    pipeline.excel, 1, verse_number,
-                    **{"Render Status": "Failed"},
-                )
-                failures.append((verse_number, "pipeline returned False"))
-                print(f"FAILED: Verse {verse_number}: pipeline returned False")
-                continue
-
-            source_video = (
-                Path("output")
-                / "chapter_001"
-                / f"verse_{verse_number:03d}"
-                / "final"
-                / "merged_video.mp4"
+            status = get_tracking_status(
+                pipeline.excel, chapter, verse_number
             )
 
-            if not source_video.is_file():
-                failures.append((
-                    verse_number,
-                    f"merged video not found: {source_video}"
-                ))
-                print(f"FAILED TO COPY: {source_video} not found")
-                continue
+            # Prefer the original rendered output, then existing exports.
+            candidates = [output_video, local_video, drive_video]
 
-            if source_video.stat().st_size <= 0:
+            source_video = next(
+                (
+                    path for path in candidates
+                    if path.is_file() and path.stat().st_size > 0
+                ),
+                None,
+            )
+
+            render_completed = (
+                status.get("Render Status", "").casefold()
+                == "completed"
+            )
+
+            if render_completed and source_video is not None:
+                print(f"SKIPPING RENDER: Existing video found: {source_video}")
+
+            elif source_video == output_video and output_video.is_file():
+                # Recover a video already rendered before a previous
+                # interruption, even if Excel was not updated.
+                print("Existing rendered video found. Skipping rerender.")
+
+            else:
+                # No usable existing video: rendering is necessary.
+                print("No usable completed video found. Rendering now.")
+
                 update_tracking_status(
-                    pipeline.excel, 1, verse_number,
-                    **{"Render Status": "Failed"},
+                    pipeline.excel, chapter, verse_number,
+                    **{
+                        "Render Status": "Processing",
+                        "Local Export Status": "Pending",
+                        "Google Drive Status": "Pending",
+                    },
                 )
-                failures.append((verse_number, f"merged video is empty: {source_video}"))
-                print(f"FAILED: Empty final video: {source_video}")
-                continue
 
+                success = pipeline.run(
+                    chapter=chapter, verse=verse_number
+                )
+
+                if not success:
+                    update_tracking_status(
+                        pipeline.excel, chapter, verse_number,
+                        **{"Render Status": "Failed"},
+                    )
+                    failures.append(
+                        (verse_number, "Pipeline returned False")
+                    )
+                    continue
+
+                if (
+                    not output_video.is_file()
+                    or output_video.stat().st_size <= 0
+                ):
+                    update_tracking_status(
+                        pipeline.excel, chapter, verse_number,
+                        **{"Render Status": "Failed"},
+                    )
+                    failures.append(
+                        (verse_number, "Rendered video missing or empty")
+                    )
+                    continue
+
+                source_video = output_video
+
+            # A valid video exists. Update status and recover exports
+            # independently, without rerendering.
             update_tracking_status(
-                pipeline.excel, 1, verse_number,
+                pipeline.excel, chapter, verse_number,
                 **{"Render Status": "Completed"},
             )
 
-            target_name = f"Chapter_001Verse_{verse_number:03d}.mp4"
             copy_errors = []
 
             for destination in destinations:
                 target = destination / target_name
+
                 try:
-                    shutil.copy2(source_video, target)
-                    if not target.is_file() or target.stat().st_size != source_video.stat().st_size:
-                        raise IOError("Copied file verification failed")
-                    status_header = (
+                    # Avoid copying a file onto itself.
+                    same_file = (
+                        source_video.resolve() == target.resolve()
+                    )
+
+                    if not same_file:
+                        shutil.copy2(source_video, target)
+
+                    if (
+                        not target.is_file()
+                        or target.stat().st_size <= 0
+                        or target.stat().st_size
+                        != source_video.stat().st_size
+                    ):
+                        raise IOError("Video copy verification failed")
+
+                    header = (
                         "Local Export Status"
                         if destination == destinations[0]
                         else "Google Drive Status"
                     )
+
                     update_tracking_status(
-                        pipeline.excel, 1, verse_number,
-                        **{status_header: "Completed"},
+                        pipeline.excel, chapter, verse_number,
+                        **{header: "Completed"},
                     )
-                    print(f"COPIED AND VERIFIED: {target.resolve()}")
-                except Exception as copy_exc:
-                    status_header = (
+
+                    print(f"VERIFIED: {target}")
+
+                except Exception as exc:
+                    header = (
                         "Local Export Status"
                         if destination == destinations[0]
                         else "Google Drive Status"
                     )
+
                     update_tracking_status(
-                        pipeline.excel, 1, verse_number,
-                        **{status_header: "Failed"},
+                        pipeline.excel, chapter, verse_number,
+                        **{header: "Failed"},
                     )
-                    copy_errors.append(f"{target}: {copy_exc}")
-                    print(f"COPY FAILED: {target}: {copy_exc}")
+
+                    copy_errors.append(f"{target}: {exc}")
+                    print(f"EXPORT FAILED: {target}: {exc}")
 
             if copy_errors:
                 failures.append((verse_number, "; ".join(copy_errors)))
             else:
                 successes.append(verse_number)
-                print(f"SUCCESS: Verse {verse_number} copied to both folders.")
+                print(f"SUCCESS: Verse {verse_number}")
 
         except Exception as exc:
             failures.append((verse_number, str(exc)))
             print(f"FAILED: Verse {verse_number}: {exc}")
 
-    print("\\n" + "=" * 60)
-    print(f"Successfully copied to both folders: {successes}")
+    print("\n" + "=" * 60)
+    print(f"Successful verses: {successes}")
     print(f"Failures: {len(failures)}")
 
     for verse_number, error in failures:
