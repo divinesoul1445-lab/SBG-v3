@@ -167,9 +167,7 @@ class VideoRenderer:
             capture_output=True,
             text=True,
             check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            )
+        )
 
         value = (
             result.stdout
@@ -237,8 +235,7 @@ class VideoRenderer:
             capture_output=True,
             text=True,
             check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,        )
+        )
 
         duration_text = (
             result.stdout.strip()
@@ -1234,19 +1231,7 @@ class VideoRenderer:
         # LOG
         # ======================================================
 
-        Logger.error(
-            f"Subtitle words : "
-            f"{len(words)}"
-        )
-
-        for word in words:
-
-            Logger.error(
-                f"  {word['text']} "
-                f"{word['start']:.3f} -> "
-                f"{word['end']:.3f}"
-            )
-
+        # Verbose subtitle word-timing diagnostics disabled.
         # ======================================================
         # PREPARE OUTPUT DIRECTORY
         # ======================================================
@@ -3995,5 +3980,6 @@ class VideoRenderer:
             f"Scene 2 test rendered successfully:\n"
             f"{output_file}"
         )
+
 
 

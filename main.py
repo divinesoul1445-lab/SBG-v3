@@ -180,7 +180,7 @@ def main():
     for destination in destinations:
         destination.mkdir(parents=True, exist_ok=True)
 
-    for verse_number in range(1, 11):
+    for verse_number in range(17, 48):
         chapter = 1
         target_name = f"Chapter_{chapter:03d}Verse_{verse_number:03d}.mp4"
 
@@ -364,4 +364,5 @@ if __name__ == "__main__":
             f"{hours:02d}:{minutes:02d}:{seconds:02d}"
         )
         print("=" * 60)
+
 

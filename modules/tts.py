@@ -145,47 +145,8 @@ class TTSGenerator:
         scene_number: int,
         text: str,
     ):
-
-        print()
-        print("=" * 80)
-        print(
-            f"TTS INPUT DEBUG — SCENE {scene_number}"
-        )
-        print("=" * 80)
-
-        print()
-
-        print("TEXT:")
-        print(text)
-
-        print()
-
-        print("REPR:")
-        print(repr(text))
-
-        print()
-
-        print("CODEPOINTS:")
-
-        print(
-            [
-                hex(ord(char))
-                for char in text
-            ]
-        )
-
-        print()
-
-        print("SOURCE WORDS:")
-
-        print(
-            self._get_source_words(text)
-        )
-
-        print()
-
-        print("=" * 80)
-        print()
+        # Verbose text diagnostics disabled.
+        return
 
     # ========================================================
     # GENERATE AUDIO + WORD TIMINGS
