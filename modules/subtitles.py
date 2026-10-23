@@ -245,18 +245,11 @@ class SubtitleGenerator:
                 )
             )
 
-            print(
-                f"Audio duration: "
-                f"{audio_duration:.3f}s"
-            )
+            pass  # Verbose subtitle diagnostic suppressed
 
-            print(
-                f"Timing file:"
-            )
+            pass  # Verbose subtitle diagnostic suppressed
 
-            print(
-                f"  {timing_file}"
-            )
+            pass  # Verbose subtitle diagnostic suppressed
 
             # -------------------------------------------------
             # Load WordBoundary timestamps
@@ -275,10 +268,7 @@ class SubtitleGenerator:
                     f"contains no WordBoundary data."
                 )
 
-            print(
-                f"Word boundaries: "
-                f"{len(words)}"
-            )
+            pass  # Verbose subtitle diagnostic suppressed
 
             # -------------------------------------------------
             # Build subtitle entries
